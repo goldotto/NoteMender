@@ -1,50 +1,136 @@
-import {spawn} from 'node:child_process';
-import {mkdir,writeFile,rename,readFile,unlink,stat} from 'node:fs/promises';
+import {mkdir,readFile,rename,stat,unlink,writeFile} from 'node:fs/promises';
 import {createReadStream} from 'node:fs';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {pythonFor} from '../src/python-runtime.mjs';
-const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),gpu=process.argv.includes('--gpu'),name=gpu?'gpu':'cpu',directory=path.join(root,'runtime','acceleration',name);
-async function run(python,args){await new Promise((resolve,reject)=>{const child=spawn(python,args,{cwd:root,windowsHide:true,stdio:'inherit',env:{...process.env,PIP_DISABLE_PIP_VERSION_CHECK:'1',PIP_DEFAULT_TIMEOUT:'120',PIP_RETRIES:'8'}});child.once('error',reject);child.once('close',code=>code===0?resolve():reject(Error(`组件安装失败（${code}）`)));});}
-const ortVersion='1.22.0'; // CPU and Windows CUDA wheels both exist for this release.
-const dependencies=[`onnxruntime${gpu?'-gpu':''}==${ortVersion}`,'numpy==1.26.4','flatbuffers==25.2.10','protobuf==5.29.5','coloredlogs==15.0.1','humanfriendly==10.0','packaging==24.2',`sympy==${gpu?'1.14.0':'1.13.1'}`];
-await mkdir(directory,{recursive:true});await unlink(path.join(directory,'ready.json')).catch(()=>{});
-const python=await pythonFor(root);let installed=false;
-for(const index of ['https://pypi.tuna.tsinghua.edu.cn/simple','https://pypi.org/simple'])try{await run(python,['-m','pip','install','--upgrade','--target',directory,'--index-url',index,...dependencies]);installed=true;break;}catch(error){console.error(error.message);}
-if(!installed)throw Error('加速组件未安装完成，当前运行环境保持可用。');
+import {accelerationModelReady,accelerationReady,accelerationRepairPlan,ensurePip,missingPythonPackages,runProcess} from './install-runtime.mjs';
+
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const gpu=process.argv.includes('--gpu');
+const component=gpu?'gpu':'cpu';
+const directory=path.join(root,'runtime','acceleration',component);
+const modelPath=path.join(root,'runtime','models','basic-pitch','nmp.onnx');
+const python=await pythonFor(root);
+const ortVersion=gpu?'1.22.0':'1.22.1';
+const env={...process.env,PIP_DISABLE_PIP_VERSION_CHECK:'1',PIP_DEFAULT_TIMEOUT:'120',PIP_RETRIES:'8'};
+
+async function run(command,args,extraEnv={}){
+  const result=await runProcess(command,args,{cwd:root,env:{...env,...extraEnv}});
+  if(result.code!==0)throw Error(`组件安装失败（${result.code}）`);
+  return result;
+}
+
+const probeEnv={...env,PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)};
+const existingReady=await accelerationReady({directory,modelPath,component,python,cwd:root,env:probeEnv});
+if(existingReady){
+  console.log(`已发现可用的${gpu?'GPU':'CPU'}加速组件与完整模型，直接复用本地文件。`);
+  process.exit(0);
+}
+
+// Bootstrap pip only when actual package repair is needed. Keep the local
+// marker available while checking its model fingerprint.
+await mkdir(directory,{recursive:true});
+const packageVersions={
+  [gpu?'onnxruntime-gpu':'onnxruntime']:ortVersion,
+  numpy:'1.26.4',flatbuffers:'25.2.10',protobuf:'5.29.5',coloredlogs:'15.0.1',humanfriendly:'10.0',packaging:'24.2',sympy:gpu?'1.14.0':'1.13.1',
+};
+const packageModules={
+  [gpu?'onnxruntime-gpu':'onnxruntime']:'onnxruntime',
+  numpy:'numpy',flatbuffers:'flatbuffers',protobuf:'google.protobuf',coloredlogs:'coloredlogs',humanfriendly:'humanfriendly',packaging:'packaging',sympy:'sympy',
+};
+const torchVersions=gpu?{torch:'2.7.1+cu128',torchaudio:'2.7.1+cu128'}:{};
+const torchModules=gpu?{torch:'torch',torchaudio:'torchaudio'}:{};
+const missingDependencies=await missingPythonPackages({python,expected:packageVersions,modules:packageModules,cwd:root,env:probeEnv});
+const missingTorch=gpu?await missingPythonPackages({python,expected:torchVersions,modules:torchModules,cwd:root,env:probeEnv}):[];
+const repair=accelerationRepairPlan({ready:existingReady,modelReady:await accelerationModelReady({directory,modelPath,component}),missingDependencies,missingTorch});
+if(repair.reuse){
+  console.log(`已发现可用的${gpu?'GPU':'CPU'}加速组件与完整模型，直接复用本地文件。`);
+  process.exit(0);
+}
+if(repair.bootstrapPip)await ensurePip(python,{cwd:root,env});
+if(repair.installDependencies){
+  const dependencies=repair.missingDependencies.map(name=>`${name}==${packageVersions[name]}`);
+  let installed=false;
+  for(const index of ['https://pypi.tuna.tsinghua.edu.cn/simple','https://pypi.org/simple'])try{
+    await run(python,['-m','pip','install','--upgrade','--no-deps','--target',directory,'--index-url',index,...dependencies]);
+    installed=true;
+    break;
+  }catch(error){console.error(error.message);}
+  if(!installed)throw Error('加速组件未安装完成，当前运行环境保持可用。');
+}
+
 async function cudaWheel(packageName){
-  const filename=packageName+'-2.7.1+cu128-cp311-cp311-win_amd64.whl',url='https://download.pytorch.org/whl/cu128/'+filename.replace('+','%2B');
-  const cache=path.join(root,'runtime/acceleration/downloads');await mkdir(cache,{recursive:true});
+  const filename=packageName+'-2.7.1+cu128-cp311-cp311-win_amd64.whl';
+  const url='https://download.pytorch.org/whl/cu128/'+filename.replace('+','%2B');
+  const cache=path.join(root,'runtime/acceleration/downloads');
+  await mkdir(cache,{recursive:true});
   const target=path.join(cache,filename),partial=target+'.part';
   const response=await fetch(url,{method:'HEAD',signal:AbortSignal.timeout(30000)});
   if(!response.ok)throw Error('官方 CUDA 组件下载不可用：'+response.status);
-  const expected=Number(response.headers.get('content-length')),sha=response.headers.get('x-amz-meta-checksum-sha256');
-  async function valid(file){try{
-    if((await stat(file)).size!==expected)return false;
-    if(sha){const hash=createHash('sha256');for await(const chunk of createReadStream(file))hash.update(chunk);return hash.digest('hex')===sha;}
-    return false;
-  }catch{return false;}}
+  const expected=Number(response.headers.get('content-length'));
+  const sha=response.headers.get('x-amz-meta-checksum-sha256');
+  async function valid(file){
+    try{
+      if((await stat(file)).size!==expected)return false;
+      if(!sha)return false;
+      const hash=createHash('sha256');
+      for await(const chunk of createReadStream(file))hash.update(chunk);
+      return hash.digest('hex')===sha;
+    }catch{return false;}
+  }
   if(await valid(target))return target;
   for(let attempt=0;attempt<8;attempt++){
     console.log('下载 '+packageName+' CUDA 组件（支持断点续传）…');
-    try{await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','30','--speed-time','120','--speed-limit','1024','--output',partial,url]);}catch(error){console.error(error.message);continue;}
+    try{await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','30','--speed-time','120','--speed-limit','1024','--output',partial,url]);}
+    catch(error){console.error(error.message);continue;}
     if(!await valid(partial))throw Error('CUDA 安装包校验失败，请移除对应 .part 文件后重试。');
-    await rename(partial,target);return target;
+    await rename(partial,target);
+    return target;
   }
   throw Error('下载未完成，重新运行可从已有进度继续。');
 }
-if(gpu){const wheels=[];for(const name of ['torch','torchaudio'])wheels.push(await cudaWheel(name));await run(python,['-m','pip','install','--upgrade','--no-deps','--target',directory,...wheels]);}
-const modelDirectory=path.join(root,'runtime/models/basic-pitch');await mkdir(modelDirectory,{recursive:true});
-const modelPath=path.join(modelDirectory,'nmp.onnx');let model;
-try{model=await readFile(modelPath);}catch{}
-if(!model){
+
+if(repair.installTorch){
+  const wheels=[];
+  for(const name of repair.missingTorch)wheels.push(await cudaWheel(name));
+  await run(python,['-m','pip','install','--upgrade','--no-deps','--target',directory,...wheels]);
+}
+
+const stillMissing=await missingPythonPackages({python,expected:packageVersions,modules:packageModules,cwd:root,env:probeEnv});
+const stillMissingTorch=gpu?await missingPythonPackages({python,expected:torchVersions,modules:torchModules,cwd:root,env:probeEnv}):[];
+if(stillMissing.length||stillMissingTorch.length)throw Error(`加速组件依赖仍不完整：${[...stillMissing,...stillMissingTorch].join(', ')}`);
+
+await mkdir(path.dirname(modelPath),{recursive:true});
+let modelIsComplete=false;
+try{
+  const existing=await stat(modelPath);
+  if(existing.isFile()&&existing.size>=100_000){
+    const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
+    modelIsComplete=result.code===0;
+  }
+}catch{}
+if(!modelIsComplete){
+  await unlink(modelPath+'.part').catch(()=>{});
   for(const url of ['https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx','https://cdn.jsdelivr.net/gh/spotify/basic-pitch@main/basic_pitch/saved_models/icassp_2022/nmp.onnx'])try{
-    const response=await fetch(url,{signal:AbortSignal.timeout(60000)});if(!response.ok)throw Error(`模型下载失败 ${response.status}`);const data=Buffer.from(await response.arrayBuffer());
-    if(data.length<100000||data.subarray(0,100).toString().includes('git-lfs'))throw Error('下载内容不是完整 ONNX 模型');
-    await writeFile(modelPath+'.part',data);await rename(modelPath+'.part',modelPath);model=data;break;
+    const response=await fetch(url,{signal:AbortSignal.timeout(60000)});
+    if(!response.ok)throw Error(`模型下载失败 ${response.status}`);
+    const data=Buffer.from(await response.arrayBuffer());
+    if(data.length<100_000||data.subarray(0,100).toString().includes('git-lfs'))throw Error('下载内容不是完整 ONNX 模型');
+    await writeFile(modelPath+'.part',data);
+    await rename(modelPath+'.part',modelPath);
+    const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
+    if(result.code!==0){await unlink(modelPath).catch(()=>{});throw Error('ONNX 模型文件未通过完整性检查');}
+    modelIsComplete=true;
+    break;
   }catch(error){console.error(error.message);}
 }
-if(!model)throw Error('模型尚未下载完成，请重试本脚本。');
-await writeFile(path.join(directory,'ready.json'),JSON.stringify({version:1,component:name,ortVersion,torchVersion:gpu?'2.7.1+cu128':null,modelSHA256:createHash('sha256').update(model).digest('hex')}));
+if(!modelIsComplete)throw Error('模型尚未下载完成，请重试本脚本。');
+
+const model=await readFile(modelPath);
+await writeFile(path.join(directory,'ready.json'),JSON.stringify({version:1,component,ortVersion,torchVersion:gpu?'2.7.1+cu128':null,modelSHA256:createHash('sha256').update(model).digest('hex')}));
+if(!await accelerationReady({directory,modelPath,component,python,cwd:root,env:probeEnv})){
+  await unlink(path.join(directory,'ready.json')).catch(()=>{});
+  throw Error('已安装的加速组件未通过导入、版本或模型完整性检查。');
+}
 console.log(`已安装${gpu?'显卡':'CPU'}加速组件。请运行 scripts/benchmark-compute.mjs 验证；未通过验证前继续使用当前后端。`);

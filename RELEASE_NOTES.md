@@ -2,11 +2,21 @@
 
 ## 下载选项
 
+| 版本 | 下载大小（约） | 包含功能 |
+| --- | --- | --- |
+| 源码版 | 1.9 MB | 源码、构建文件和使用说明 |
+| 下载环境版 | 65 MB | 程序、Node.js 和基础 Python；功能组件按需安装 |
+| 标准离线版 | 4.78 GB，四个分片 | CPU 识别、四／六轨分离、Qwen 歌词转写及对齐 |
+| 显卡离线扩展 | 4.29 GB，三个分片 | 可用的 NVIDIA 计算组件；安装到标准离线版 |
+
 - **下载环境版**：`windows-setup.zip`。附 Node.js 与 Python 基础解释器；按需运行 `Download-Components.cmd` 下载分轨、歌词或显卡组件。
 - **标准离线版**：下载 `windows-offline.zip.001` 等全部分片、`offline-manifest.json`、`Extract-NoteMender.ps1` 与 `Extract-NoteMender.cmd`，放在同一目录，运行解压脚本。附 CPU 音频环境、四／六轨 Demucs 和 Qwen 歌词模型，解压后启动即可使用。
 - **源码版**：`source.zip`，供开发者构建；需要 Node.js 22+。
+- **显卡离线扩展**：下载 `windows-gpu-addon.zip.001` 等全部显卡分片、`gpu-manifest.json`、`Extract-GPU-Addon.cmd` 和共用的 `Extract-NoteMender.ps1`。运行显卡解压脚本后，在解压目录运行 `Install-GPU-Addon.cmd`，输入标准离线版程序目录。包含 PyTorch／torchaudio 2.7.1+cu128 与 ONNX Runtime GPU 1.22.0；需要相容的 NVIDIA 驱动，CPU 环境保留。
 
-解压后双击 `Start-NoteMender.cmd`。GPU 与 ROSVOT 是独立可选组件，标准离线版使用 CPU。
+解压后双击 `Start-NoteMender.cmd`。标准离线版使用 CPU；显卡扩展按已有一致性验证启用可用路径，未通过的路径继续回退。ROSVOT 保留可选下载入口。
+
+标准离线版解压过程建议预留 12 GB 空闲空间；同时保留所有下载分片、扩展解压目录并安装显卡扩展时，建议预留 30 GB。完成后可以删除下载分片和显卡扩展的解压目录，保留安装好的程序目录。所有下载文件的大小与 SHA-256 见 `SHA256SUMS.txt` 和分片清单。
 
 ## 修复
 

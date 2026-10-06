@@ -26,8 +26,11 @@
 | `windows-setup.zip` 下载环境版 | 希望下载体积小、按需安装功能 | 解压后双击 `Start-NoteMender.cmd`；分轨与歌词等功能用 `Download-Components.cmd` 下载 |
 | `windows-offline.zip.001` 等标准离线版 | 希望不用安装环境，直接使用分轨及歌词 | 下载全部分片及解压脚本，在同一目录运行 `Extract-NoteMender.cmd`，再双击启动 |
 | `source.zip` 源码版 | 开发或自己管理运行环境 | Node.js 22+；执行下面的命令 |
+| `windows-gpu-addon.zip.001` 等显卡离线扩展 | 已有标准离线版、希望使用 NVIDIA 显卡 | 下载全部显卡分片和 `gpu-manifest.json`，运行 `Extract-GPU-Addon.cmd`；解压后运行 `Install-GPU-Addon.cmd` 并输入程序目录 |
 
-下载环境版已附 Node.js 和 Python 基础解释器，编辑、MIDI 和浏览器识别可直接使用；其他组件写入程序目录。标准离线版附 CPU 音频环境、四／六轨 Demucs 模型与 Qwen 歌词模型；无需另装 Node.js、Python，也不需要首次下载模型。显卡加速和 ROSVOT 演唱实验属于可选组件，均由下载入口单独安装。
+下载环境版已附 Node.js 和 Python 基础解释器，编辑、MIDI 和浏览器识别可直接使用；其他组件写入程序目录。标准离线版附 CPU 音频环境、四／六轨 Demucs 模型与 Qwen 歌词模型；无需另装 Node.js、Python，也不需要首次下载模型。显卡扩展包含现有 CUDA 12.8 运行组件，需要相容的 NVIDIA 驱动，不安装或替换驱动。ROSVOT 演唱实验由下载入口单独安装。
+
+离线分片、对应的 manifest、解压 CMD 和 `Extract-NoteMender.ps1` 必须放在同一目录。标准包使用 `Extract-NoteMender.cmd`；显卡扩展使用 `Extract-GPU-Addon.cmd`。解压脚本先验证分片与完整压缩包。已有目标目录不会被覆盖；可以在 PowerShell 中用 `-Destination` 指定新目录。
 
 ```text
 npm ci
@@ -48,7 +51,7 @@ npm start
 | ROSVOT 演唱候选 | `scripts/安装候选组件.ps1 -Singing` |
 | Qwen 歌词转写与对齐 | `scripts/安装歌词组件.ps1` |
 
-组件写入本项目 `runtime/` 或项目虚拟环境；安装脚本会检查可复用的本机环境。首次下载需要联网，模型就绪后在本机运行。显卡后端还需要通过一致性检查；详细步骤见 [组件说明](docs/组件说明.md)。当前模式始终可作为默认使用方式。
+组件写入本项目 `runtime/` 或项目虚拟环境；安装脚本先检查实际依赖与模型，已就绪时复用，只下载缺失部分。首次下载缺失组件需要联网，模型就绪后在本机运行。显卡后端还需要通过一致性检查；分轨、CREPE 与歌词可用性由实际组件及设备检测决定，Basic Pitch 未通过的执行路径保持回退。详细步骤见 [组件说明](docs/组件说明.md)。当前模式始终可作为默认使用方式。
 
 ## 使用
 

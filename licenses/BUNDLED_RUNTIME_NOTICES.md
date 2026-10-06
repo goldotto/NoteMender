@@ -13,18 +13,30 @@ You may inspect, replace or modify the runtime libraries under their applicable 
 | ONNX Runtime | 1.22.1 | https://github.com/microsoft/onnxruntime — MIT |
 | Qwen3-ASR / ForcedAligner | 0.6B models, qwen-asr 0.0.6 | https://github.com/QwenLM/Qwen3-ASR — Apache-2.0 |
 | PyAV | 16.1.0 | https://github.com/PyAV-Org/PyAV — BSD-3-Clause |
-| FFmpeg shared libraries | 8.0.1 (PyAV wheel vendor build 8.0.1-3) | https://ffmpeg.org/ — LGPL-3.0-or-later reported by these libraries |
+| FFmpeg shared libraries and codecs | 8.0.1 (PyAV wheel vendor build 8.0.1-3) | https://ffmpeg.org/ — this codec build includes GPL-licensed x264/x265; GPL-3.0-or-later obligations apply to this binary combination |
 
 Original Python dependency licenses and copyright statements are included in
 `runtime/python/Lib/site-packages/*.dist-info/licenses/` and component dependency
 directories. Qwen model license texts are included beside their model files.
 
-FFmpeg is dynamically linked by the separate Python audio environment. Its upstream
+FFmpeg is dynamically linked by the separate Python audio environment. The DLLs
+report LGPL-3.0-or-later, but their build configuration and linked libraries include
+x264 and x265. The runtime label is not a license for those GPL components. Preserve
+their GPL terms when redistributing this codec build. This does not relicense the
+independent NoteMender Node/browser application; its code communicates with the
+separate audio process. The included third-party source and license texts cover
+the codec libraries under their upstream terms.
+
+Its upstream
 vendor build recipes, patches and corresponding source references are provided in
 the runtime source attachment on the same Release page. That attachment is not
 needed to run the program. Unmodified upstream source, including its license texts,
 retains its original license. Codec dependencies may have different terms; consult
 the included source and build recipe before redistributing a changed runtime.
 
-Browser dependency notices remain in THIRD_PARTY_NOTICES.md. GPU and ROSVOT
-are downloaded optional components and are not bundled in the standard CPU edition.
+Browser dependency notices remain in THIRD_PARTY_NOTICES.md. The separate GPU
+extension includes PyTorch/torchaudio 2.7.1+cu128, ONNX Runtime GPU 1.22.0 and
+their upstream runtime libraries; their original license texts and copyright
+statements remain in the package metadata. NVIDIA runtime libraries retain
+their applicable NVIDIA terms and are not relicensed under MIT. The extension
+does not contain a GPU driver. ROSVOT remains an optional downloaded component.
