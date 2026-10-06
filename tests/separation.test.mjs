@@ -11,6 +11,7 @@ test('standard and performance separation create jobs with a directory path and 
   const root=await mkdtemp(path.join(tmpdir(),'jianpu-separation-')),runtime=path.join(root,'runtime');
   await mkdir(path.join(root,'.venv/Scripts'),{recursive:true});await writeFile(path.join(root,'.venv/Scripts/python.exe'),'');
   await mkdir(path.join(runtime,'acceleration/cpu'),{recursive:true});await writeFile(path.join(runtime,'demucs-ready.json'),'{}');await writeFile(path.join(runtime,'acceleration/cpu/ready.json'),'{}');
+  await mkdir(path.join(runtime,'acceleration/cpu/onnxruntime'),{recursive:true});await writeFile(path.join(runtime,'acceleration/cpu/onnxruntime/__init__.py'),'');
   const calls=[],children=[];
   const handler=separationService(root,{spawnImpl:(python,args,options)=>{
     calls.push({python,args,options});const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};children.push(child);return child;

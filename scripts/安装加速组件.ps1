@@ -1,4 +1,4 @@
-param([switch]$GPU)
+﻿param([switch]$GPU)
 $ErrorActionPreference = 'Stop'
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $bundledNode = Join-Path $projectRoot 'runtime\node\node.exe'

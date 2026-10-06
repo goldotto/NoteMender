@@ -13,7 +13,7 @@ export async function decodeLocal(root,bytes,signal,mode='decode'){
     await new Promise((resolve,reject)=>{
       const child=spawn(python,[path.join(root,'scripts',mode==='tempo'?'measure_tempo.py':'decode_audio.py'),source,output],{windowsHide:true,stdio:'ignore'});
       const abort=()=>child.kill(),timer=setTimeout(abort,90000);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();
-      child.once('error',()=>reject(Error('本地解码环境未安装，请运行下载运行环境.cmd后重试。')));
+      child.once('error',()=>reject(Error('本地解码环境未安装，请运行Download-Components.cmd后重试。')));
       child.once('close',code=>{clearTimeout(timer);signal?.removeEventListener('abort',abort);code===0?resolve():reject(Error('本地解码失败：文件可能损坏、无音轨、超出 10 分钟，或缺少 PyAV 解码库。'));});
     });
     const data=await readFile(output);return mode==='tempo'?JSON.parse(data):data;

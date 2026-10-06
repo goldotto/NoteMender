@@ -1,4 +1,4 @@
-$ErrorActionPreference = 'Stop'
+﻿$ErrorActionPreference = 'Stop'
 $studioRoot = Split-Path -Parent $PSScriptRoot
 $bundledNode = Join-Path $studioRoot 'runtime\node\node.exe'
 if (Test-Path -LiteralPath $bundledNode) { $studioNode = $bundledNode } else { $studioNode = (Get-Command node -ErrorAction Stop).Source }

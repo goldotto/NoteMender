@@ -1,4 +1,4 @@
-param([switch]$Singing,[string]$CheckpointZip)
+﻿param([switch]$Singing,[string]$CheckpointZip)
 $ErrorActionPreference='Stop'
 $taskRoot=Split-Path -Parent $PSScriptRoot
 $taskNode=Join-Path $taskRoot 'runtime\node\node.exe'

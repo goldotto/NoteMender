@@ -36,7 +36,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
     if(req.headers['x-studio-token']!==token){send(403,{error:'会话已过期，请刷新'});return true;}
     if(url.pathname==='/api/separation/start'&&req.method==='POST'){
       if(current){send(409,{error:'已有分离任务运行中'});return true;}
-      if(!await ready()){send(400,{error:'请先双击下载运行环境.cmd安装分轨环境'});return true;}
+      if(!await ready()){send(400,{error:'请先双击Download-Components.cmd安装分轨环境'});return true;}
       // Reserve before awaiting body, so simultaneous uploads cannot start two CPU jobs.
       current='uploading';let child,job;
       try{
@@ -57,7 +57,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
         child=spawnImpl(pythonRuntime.python,[path.join(root,'scripts','separate.py'),path.join(dir,'input.wav'),path.join(dir,'vocals.wav'),path.join(dir,'other.wav')],{cwd:root,windowsHide:true,env:{...pythonRuntime.env,JIANPU_COMPUTE:JSON.stringify(requested),JIANPU_SEPARATION_MODEL:model,TORCH_HOME:path.join(runtime,'models'),PYTHONIOENCODING:'utf-8'},stdio:['ignore','pipe','pipe']});job.child=child;
         let stderr='';child.stderr.on('data',c=>{stderr=(stderr+c.toString()).slice(-1500);const match=stderr.match(/(\d+)%[^%]*$/);if(match)job.progress=.1+Number(match[1])*.008;});
         child.stdout.on('data',c=>{const message=c.toString().trim();if(message)job.message=message.slice(-150);});
-        child.on('error',()=>{job.state='failed';job.error='无法启动 Python，请重新运行下载运行环境.cmd。';current=null;});
+        child.on('error',()=>{job.state='failed';job.error='无法启动 Python，请重新运行Download-Components.cmd。';current=null;});
         child.on('close',code=>{if(job.state==='cancelled'){}else if(code===0){job.state='done';job.progress=1;job.message='人声分离完成';}else{job.state='failed';job.error='Demucs 分离失败，请检查本地模型、内存或重新安装环境。';}if(current===id)current=null;job.child=null;});
         send(202,{id});
       }catch(e){current=null;send(400,{error:e.message});}

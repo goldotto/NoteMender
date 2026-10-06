@@ -9,7 +9,7 @@ export async function accelerationEnv(root,device='auto'){
   let directory=null;
   for(const name of device==='cpu'?['cpu','gpu']:['gpu','cpu']){
     const candidate=path.join(root,'runtime','acceleration',name);
-    try{await access(path.join(candidate,'ready.json'));directory=candidate;break;}catch{}
+    try{await access(path.join(candidate,'ready.json'));await access(path.join(candidate,'onnxruntime','__init__.py'));if(name==='gpu')await access(path.join(candidate,'torch','__init__.py'));directory=candidate;break;}catch{}
   }
   return {python:await pythonFor(root),directory,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:path.join(root,'runtime','models')}};
 }

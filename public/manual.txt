@@ -1,4 +1,4 @@
-听谱 · NoteMender 2.5.0-demo.6 使用说明书
+听谱 · NoteMender 2.5.0-demo.7 使用说明书
 ============================================
 
 一、这个 Demo 能做什么
@@ -7,9 +7,9 @@
 
 二、系统准备与启动
 
-1. 本程序的桌面启动器和组件安装脚本面向 Windows x64。源码下载需要 Node.js 22 或更新版本。已有 Node.js 时可双击“启动听谱.cmd”；从源码重新构建可在项目目录运行 npm ci、npm run build、npm start。
+1. 本程序的桌面启动器和组件安装脚本面向 Windows x64。源码下载需要 Node.js 22 或更新版本。已有 Node.js 时可双击“Start-NoteMender.cmd”；从源码重新构建可在项目目录运行 npm ci、npm run build、npm start。
 2. 启动器会打开终端显示的本机地址，只监听 127.0.0.1。浏览器未自动打开时，复制地址到浏览器。再次启动同一目录会复用服务。移动目录后地址可能变化，迁移前请先保存工程 JSON。
-3. public 中提供网页构建结果和浏览器 Basic Pitch 模型。分轨、歌词和原生加速需要另外安装 Python 组件及模型：基础环境使用“下载运行环境.cmd”，其他入口在 scripts 的“安装加速组件.ps1”“安装候选组件.ps1”“安装歌词组件.ps1”。具体见 docs/组件说明.md。
+3. public 中提供网页构建结果和浏览器 Basic Pitch 模型。分轨、歌词和原生加速需要另外安装 Python 组件及模型：基础环境使用“Download-Components.cmd”，其他入口在 scripts 的“安装加速组件.ps1”“安装候选组件.ps1”“安装歌词组件.ps1”。具体见 docs/组件说明.md。
 4. 如使用另行提供的完整离线环境包，可按该包说明直接启动。请保留 public、src、scripts、licenses 等程序目录。
 5. 关闭服务可在任务管理器结束对应 node 进程。关闭浏览器标签页不会自动停止服务。
 

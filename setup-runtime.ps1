@@ -171,7 +171,8 @@ if (Test-Node22 $nodeExe) {
     $nodeZip = Join-Path $downloads $nodeArchive
     Get-VerifiedFile @(
         "https://repo.huaweicloud.com/nodejs/v$nodeVersion/$nodeArchive",
-        "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v$nodeVersion/$nodeArchive"
+        "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v$nodeVersion/$nodeArchive",
+        "https://nodejs.org/dist/v$nodeVersion/$nodeArchive"
     ) $nodeZip $nodeHash
     $unpackDir = Join-Path $downloads "node-v$nodeVersion-win-x64"
     Expand-Archive -LiteralPath $nodeZip -DestinationPath $downloads -Force
@@ -248,7 +249,11 @@ if ($LASTEXITCODE -ne 0) {
     Write-Warning '交大 PyTorch 镜像未成功，尝试 PyTorch 官方源。'
     Assert-Command $venvPython @('-m', 'pip', 'install', '--retries', '8', '--index-url', 'https://download.pytorch.org/whl/cpu', '--no-deps', 'torch==2.5.1+cpu', 'torchaudio==2.5.1+cpu') 'PyTorch CPU 下载失败；重跑脚本可继续'
 }
-Assert-Command $venvPython @('-m', 'pip', 'install', '--retries', '8', '--index-url', $pypi, '-r', (Join-Path $PSScriptRoot 'requirements-demucs.txt')) 'Python 依赖安装失败；重跑脚本可继续'
+& $venvPython -m pip install --retries 4 --index-url $pypi -r (Join-Path $PSScriptRoot 'requirements-demucs.txt')
+if ($LASTEXITCODE -ne 0) {
+ Write-Warning '国内 PyPI 镜像未成功，尝试官方源。'
+ Assert-Command $venvPython @('-m', 'pip', 'install', '--retries', '4', '--index-url', 'https://pypi.org/simple', '-r', (Join-Path $PSScriptRoot 'requirements-demucs.txt')) 'Python 依赖安装失败；重跑脚本可继续'
+}
 Assert-Command $venvPython @('-c', 'import demucs, torch, torchaudio, librosa, av') 'Python 音频依赖检查失败'
 }
 $pythonForAudio = $venvPython
@@ -277,4 +282,4 @@ $env:TORCH_HOME = Join-Path $runtime 'models'
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'demucs-ready.json'))) {
     Assert-Command $pythonForAudio @((Join-Path $PSScriptRoot 'scripts\separate.py'), '--prepare') 'Demucs 模型加载失败'
 }
-Write-Host '全部完成。双击 启动听谱.cmd；已有页面请刷新。'
+Write-Host '全部完成。双击 Start-NoteMender.cmd；已有页面请刷新。'

@@ -41,7 +41,7 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
         try{let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>120*1024*1024)return send(413,{error:'音频不能超过 120 MB'});chunks.push(c);}if(!size)return send(400,{error:'音频为空'});const mode=url.pathname==='/api/tempo'?'tempo':'decode';return send(200,await decodeLocal(ROOT,Buffer.concat(chunks),controller.signal,mode),mode==='tempo'?'application/json; charset=utf-8':'audio/wav');}
         catch(e){return send(400,{error:e.message});}finally{decoding=false;res.off('close',onClose);}
       }
-      if(url.pathname==='/api/status'&&req.method==='GET')return send(200,{token,version:'2.5.0-demo.6',instance:INSTANCE});
+      if(url.pathname==='/api/status'&&req.method==='GET')return send(200,{token,version:'2.5.0-demo.7',instance:INSTANCE});
       if(url.pathname==='/api/plugins'&&req.method==='GET')return send(200,{plugins:await listPlugins(pluginDirectory)});
       if(url.pathname==='/api/export-file'&&req.method==='POST'){
         if(req.headers['x-studio-token']!==token)return send(403,{error:'会话已过期，请刷新'});

@@ -2,7 +2,7 @@ import {spawn,spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 
-const VERSION='2.5.0-demo.6';
+const VERSION='2.5.0-demo.7';
 async function probe(port){
   try{const response=await fetch(`http://127.0.0.1:${port}/api/status`,{signal:AbortSignal.timeout(1000)});let version=null,instance=null;try{if(response.ok)({version,instance}=await response.json());}catch{}return {running:true,version,instance};}
   catch{return {running:false,version:null,instance:null};}

@@ -17,9 +17,17 @@
 
 ![内置示例的简谱编辑界面](docs/editor.jpg)
 
-## 运行
+## 下载与运行
 
-桌面启动器和可选组件安装脚本以 Windows x64 为目标。安装 [Node.js 22 或更新版本](https://nodejs.org/)，在本目录运行：
+到 [最新预览版](https://github.com/goldotto/NoteMender/releases/tag/v2.5.0-demo.7) 按用途选择。桌面版本支持 Windows x64。
+
+| 下载 | 适合谁 | 启动方式 |
+| --- | --- | --- |
+| `windows-setup.zip` 下载环境版 | 希望下载体积小、按需安装功能 | 解压后双击 `Start-NoteMender.cmd`；分轨与歌词等功能用 `Download-Components.cmd` 下载 |
+| `windows-offline.zip.001` 等标准离线版 | 希望不用安装环境，直接使用分轨及歌词 | 下载全部分片及解压脚本，在同一目录运行 `Extract-NoteMender.cmd`，再双击启动 |
+| `source.zip` 源码版 | 开发或自己管理运行环境 | Node.js 22+；执行下面的命令 |
+
+下载环境版已附 Node.js 和 Python 基础解释器，编辑、MIDI 和浏览器识别可直接使用；其他组件写入程序目录。标准离线版附 CPU 音频环境、四／六轨 Demucs 模型与 Qwen 歌词模型；无需另装 Node.js、Python，也不需要首次下载模型。显卡加速和 ROSVOT 演唱实验属于可选组件，均由下载入口单独安装。
 
 ```text
 npm ci
@@ -27,15 +35,13 @@ npm run build
 npm start
 ```
 
-打开终端显示的 `http://127.0.0.1:端口/`。服务只监听本机。
-
-本目录包含网页依赖的构建结果和浏览器 Basic Pitch 模型。已有 Node.js 时，也可直接双击 `启动听谱.cmd`。源码下载不包含 Node.js、Python 环境或可选模型；编辑、MIDI 和浏览器识别可以先使用，分轨及歌词功能需要下面的组件。
+源码版也含已构建网页和浏览器模型；有 Node.js 时可直接使用启动脚本。服务只监听本机，地址由启动器自动打开。标准离线版 CPU 处理耗时取决于歌曲及硬件；原生加速必须通过一致性检查，未通过时继续使用现有浏览器后端。
 
 ### 可选本机组件
 
 | 功能 | 安装入口 |
 | --- | --- |
-| 基础音频解码与 Demucs 分轨 | `下载运行环境.cmd` |
+| 基础音频解码与 Demucs 分轨 | `Download-Components.cmd` |
 | CPU 原生加速 | `scripts/安装加速组件.ps1` |
 | NVIDIA 显卡加速 | `scripts/安装加速组件.ps1 -GPU` |
 | 六轨器乐候选 | `scripts/安装候选组件.ps1` |

@@ -1,3 +1,4 @@
+import {transcriptionTempo} from './tempo-fallback.mjs';
 import {ProjectAudioRestore} from './project-audio.mjs';
 import {exportName,importedProjectStem,isExportPath} from './export-name.mjs';
 import {splitNotesByLyrics} from './lyric-note-split.mjs';
@@ -592,7 +593,7 @@ async function transcribe(){
   stopPlayback();const task={cancelled:false,controller:new AbortController(),stitchDecisions:[],singingFine:$('singingFine').checked,lyricAssist:$('lyricAssist').checked,lyricLanguage:$('lyricsLanguage').value};job=task;transcribing=true;auditWindows=[];analysisWarnings=[];task.started=performance.now();setBusy(true,'准备本机扒谱');
   try{
     await prepareCompute(task);await ensureOriginalResource(task);if($('autoSeparate').checked)await separateForTask(task);
-    const tempoAt=performance.now();const measured=!bpmManuallySet?await tempoForTask(task):{bpm,beats:[]},tempoHint=measured.bpm,step=Number($('quantize').value);
+    const tempoAt=performance.now();const measured=await transcriptionTempo({manual:bpmManuallySet,bpm,analyze:()=>tempoForTask(task),signal:task.controller.signal}),tempoHint=measured.bpm,step=Number($('quantize').value);task.tempoWarning=measured.warning||'';if(task.tempoWarning)analysisWarnings.push(task.tempoWarning);
     task.computeTimes.tempoMs=performance.now()-tempoAt;
     const partial=start>.01||end<original.duration-.01;
     const base=partial&&!scorePending?project:{...project,bpm:tempoHint,offset:0,timeAnchors:makeTimeAnchors(original.duration,tempoHint,measured.beats),notes:[],lyrics:scorePending?[]:(project.lyrics||[]).filter(t=>t.reviewed)};
@@ -631,7 +632,7 @@ async function transcribe(){
     const combined=partial&&!scorePending?integratePartialCandidates(project,sections,alternates,start,end):{sections,alternates};localDraft.sections=combined.sections;
     localDraft.audioResources=audioResources;localDraft.alternates=preservePrimary(localDraft,sections,combined.alternates).map(v=>v.primary&&sections.some(s=>s.id===v.sectionId)?{...v,diagnostics:selectedIssues(null,auditWindows,v.audioStart,v.audioEnd,v.source)}:v);
     localDraftLabel='本机整曲候选';
-    $('localDraftSummary').textContent=`${sections.length} 个段落，自动初稿 ${notes.length} 音，当前谱 ${scorePending?0:project.notes.length} 音，${alternates.length} 组可切换候选。${partial&&!scorePending?'仅替换所选音频范围，其他手改音符保留。':'整曲候选待确认。'}${generatedLyrics.length?'歌词 '+generatedLyrics.length+' 字词 · 未对应 '+generatedLyrics.filter(t=>!t.noteIds.length).length+' 项。':''}生成后仍需人工校对。收起此窗口不会丢失候选或覆盖现有乐谱。`;
+    $('localDraftSummary').textContent=`${sections.length} 个段落，自动初稿 ${notes.length} 音，当前谱 ${scorePending?0:project.notes.length} 音，${alternates.length} 组可切换候选。${partial&&!scorePending?'仅替换所选音频范围，其他手改音符保留。':'整曲候选待确认。'}${generatedLyrics.length?'歌词 '+generatedLyrics.length+' 字词 · 未对应 '+generatedLyrics.filter(t=>!t.noteIds.length).length+' 项。':''}生成后仍需人工校对。收起此窗口不会丢失候选或覆盖现有乐谱。${task.tempoWarning?' '+task.tempoWarning:''}`;
     $('localDraftSections').textContent=sections.map(s=>{const {start,end}=sectionBeats(base,s),count=notes.filter(n=>n.start>=start&&n.start<end).length,seconds=Math.max(1,s.audioEnd-s.audioStart),modes=[...new Set(s.analysisUsed.map(x=>modeName[x.mode]))].join('／'),tracks=[...new Set(s.analysisUsed.map(x=>trackName(x.source)))].join('／'),flags=previewFlags(s.analysisUsed);return `${s.name}：${count} 音 · ${tracks} · ${modes}${!count?' · 无候选，需人工补写':count/seconds>4?' · 候选偏密，请重点听审':''}`;}).join('　');
     localDraftBase=localDraft;localDraftVariants=localDraft.alternates;selectedDraftVariants=new Map();localDraftSections=sections;
     draftComparisonProject=structuredClone(project);draftNewSong=scorePending;draftShouldPersist=true;pendingDraftMeta=null;
@@ -1252,7 +1253,7 @@ try{const saved=localStorage.getItem(PENDING_DRAFT_KEY);if(saved){loadPendingDra
 fetch('/api/status').then(r=>r.json()).then(async s=>{token=s.token;checkLyricsStatus();await linkedProjectReady;if(!new URLSearchParams(location.search).get('audio'))await restoreResources(restorableAudioProject(project,localDraft));const singing=await fetch('/api/singing/status',{headers:{'X-Studio-Token':token}});singingReady=(await singing.json()).ready===true;$('singingStatus').textContent=singingReady?'演唱精细分音已就绪':'可选组件尚未安装：scripts/安装候选组件.ps1';if($('computeMode').value==='performance')await refreshCompute();}).catch(()=>toast('本地服务未连接，请通过启动脚本运行。',true));
 
 // Optional native separation API is discovered rather than assumed installed.
-async function checkSeparation(){try{const r=await fetch('/api/separation/status'),s=await r.json();window.separationReady=s.ready===true;window.separationModels=s.models||['htdemucs'];if(!s.ready)$('autoSeparate').checked=false;$('separationState').textContent=s.ready?'本地 Demucs 已就绪；处理整曲可能需要几分钟。':'分轨未安装，已取消分轨；试用时请手填 BPM。需要分轨可双击“下载运行环境.cmd”。';$('separate').disabled=!original||!window.separationReady;}catch{window.separationReady=false;$('autoSeparate').checked=false;$('separationState').textContent='分轨状态不可用；试用时请手填 BPM。';}}
+async function checkSeparation(){try{const r=await fetch('/api/separation/status'),s=await r.json();window.separationReady=s.ready===true;window.separationModels=s.models||['htdemucs'];if(!s.ready)$('autoSeparate').checked=false;$('separationState').textContent=s.ready?'本地 Demucs 已就绪；处理整曲可能需要几分钟。':'分轨未安装，已取消分轨；试用时请手填 BPM。需要分轨可双击“Download-Components.cmd”。';$('separate').disabled=!original||!window.separationReady;}catch{window.separationReady=false;$('autoSeparate').checked=false;$('separationState').textContent='分轨状态不可用；试用时请手填 BPM。';}}
 on('separate','click',async()=>{if(lyricsTask)throw Error('请等待歌词分析完成');if(!original||job)return;stopPlayback();const task={cancelled:false,controller:new AbortController()};job=task;setBusy(true,'准备分离音频');try{task.started=performance.now();await prepareCompute(task);await separateForTask(task);showComputeTimes(task);if(!task.cancelled)toast('人声与器乐轨已就绪，点击“生成简谱”。');}finally{if(task.cancelled&&task.separationId)api('separation/cancel',{id:task.separationId}).catch(()=>{});if(job===task){job=null;setBusy(false);}}});
 checkSeparation();
 
