@@ -1,0 +1,27 @@
+{
+  "name": "notemender",
+  "version": "2.5.0-demo.6",
+  "private": true,
+  "type": "module",
+  "description": "Local audio-to-numbered-notation studio with passage editing and generic plugin API",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test tests/*.test.mjs",
+    "build": "node build.mjs",
+    "examples": "node scripts/create-fixtures.mjs",
+    "package:public": "node scripts/package-public.mjs"
+  },
+  "dependencies": {
+    "@soundtouchjs/audio-worklet": "2.1.1",
+    "@spotify/basic-pitch": "^1.0.1",
+    "@tonejs/midi": "^2.0.28",
+    "pitchy": "^4.1.0"
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.12"
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,26 @@
+name: 问题反馈
+description: 报告操作问题或具体识别错误
+title: "[问题] "
+body:
+  - type: textarea
+    id: steps
+    attributes:
+      label: 操作步骤与问题
+      description: 说明怎样复现，以及预期结果和实际结果。
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: 运行环境
+      description: 程序版本、Windows 版本、浏览器，以及实际计算设备。
+  - type: textarea
+    id: recognition
+    attributes:
+      label: 识别问题（可选）
+      description: 请注明出错秒数、所选音轨与识别方案；也欢迎反馈人工修改不便之处。
+  - type: textarea
+    id: attachment
+    attributes:
+      label: 最小复现素材（可选）
+      description: 可附截图或已去除私人信息的工程。只分享你愿意公开且有权分享的素材。

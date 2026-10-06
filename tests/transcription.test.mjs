@@ -1,0 +1,9 @@
+import test from 'node:test';import assert from 'node:assert/strict';
+import {detectMonophonic,selectMelody,estimateTempo} from '../src/transcription.mjs';
+import {wavBytes} from '../public/audio.mjs';
+export function fixture(){const sr=22050,notes=[60,62,64,65,67,69,71,72],samples=new Float32Array(sr*5);for(let i=0;i<notes.length;i++)for(let j=0;j<sr*.42;j++){const t=j/sr,env=Math.min(1,t/.02,Math.max(0,(.42-t)/.04));samples[Math.floor((.4+i*.5)*sr)+j]=.5*Math.sin(2*Math.PI*440*2**((notes[i]-69)/12)*t)*env;}return {samples,notes,sr};}
+test('Pitchy detects a synthesized C major scale within one semitone and no spurious silence',()=>{const {samples,notes,sr}=fixture(),detected=detectMonophonic(samples,sr);assert.equal(detected.length,8);assert.deepEqual(detected.map(n=>n.midi),notes);assert.ok(detected[0].start>.2);assert.ok(detected.at(-1).end<4.5);});
+test('Pitchy returns zero notes for silence',()=>{assert.deepEqual(detectMonophonic(new Float32Array(22050)),[]);});
+test('polyphonic melody reduction produces no overlap and honors high-voice strategy',()=>{const raw=[{start:0,end:1,midi:60,confidence:.9},{start:0,end:1,midi:72,confidence:.7},{start:1,end:2,midi:74,confidence:.9}],lead=selectMelody(raw,{strategy:'highest'});assert.deepEqual(lead.map(n=>n.midi),[72,74]);assert.ok(lead[0].end<=lead[1].start);assert.ok(lead[0].confidence<.6);});
+test('tempo estimator finds a 120 bpm pulse train',()=>{const s=new Float32Array(22050*12);for(let i=0;i<24;i++)for(let j=0;j<220;j++)s[i*11025+j]=.8*(1-j/220);assert.ok(Math.abs(estimateTempo(s)-120)<=2);});
+test('WAV serializer writes correct PCM header and length',()=>{const b=wavBytes(new Float32Array([0,1,-1])),v=new DataView(b.buffer);assert.equal(b.length,50);assert.equal(v.getUint32(24,true),22050);assert.equal(v.getInt16(46,true),32767);});

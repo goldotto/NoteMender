@@ -1,0 +1,55 @@
+{
+  "name": "@soundtouchjs/audio-worklet",
+  "version": "2.1.1",
+  "description": "AudioWorklet implementation of the SoundTouchJS library",
+  "license": "MPL-2.0",
+  "licenseFile": "LICENSE",
+  "type": "module",
+  "sideEffects": false,
+  "exports": {
+    "./package.json": "./package.json",
+    ".": {
+      "types": "./.dist/index.d.ts",
+      "default": "./.dist/index.js"
+    },
+    "./processor": "./.dist/soundtouch-processor.js"
+  },
+  "main": "./.dist/index.js",
+  "types": "./.dist/index.d.ts",
+  "files": [
+    ".dist",
+    "docs",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "audio",
+    "WebAudio",
+    "AudioWorklet",
+    "TypeScript",
+    "pitch",
+    "tempo",
+    "soundtouch"
+  ],
+  "author": "Steve 'Cutter' Blades",
+  "contributors": [
+    "Steve 'Cutter' Blades <web.admin@cutterscrossing.com> (https://cutterscrossing.com/)"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cutterbl/SoundTouchJS.git",
+    "directory": "packages/audio-worklet"
+  },
+  "bugs": {
+    "url": "https://github.com/cutterbl/SoundTouchJS/issues"
+  },
+  "homepage": "https://github.com/cutterbl/SoundTouchJS",
+  "dependencies": {
+    "@soundtouchjs/interpolation-strategy-lanczos": "workspace:*",
+    "@soundtouchjs/core": "workspace:*",
+    "@soundtouchjs/worklet-base": "workspace:*"
+  },
+  "publishConfig": {
+    "access": "public"
+  }
+}

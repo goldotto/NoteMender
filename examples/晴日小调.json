@@ -1,0 +1,268 @@
+{
+  "version": 1,
+  "title": "晴日小调 · 示例",
+  "bpm": 112,
+  "key": 0,
+  "meter": "4/4",
+  "offset": 0,
+  "sourceName": "",
+  "engine": "内置原创示例",
+  "notes": [
+    {
+      "id": "0eaffc2b-c0fb-454b-9a6a-09e72de23581",
+      "start": 0,
+      "duration": 1,
+      "midi": 60,
+      "confidence": 1,
+      "lyric": "晴"
+    },
+    {
+      "id": "f626cecf-5f64-4211-bf3a-c1264321a906",
+      "start": 1,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": "日"
+    },
+    {
+      "id": "a8104292-b681-41af-95f0-b1eea91247cc",
+      "start": 2,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": "微"
+    },
+    {
+      "id": "69f54e3c-c0ea-47c1-b9a3-cf7e6a654026",
+      "start": 3,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": "风"
+    },
+    {
+      "id": "5d4bd04a-2f43-456e-abe5-9f86f9e5f909",
+      "start": 4,
+      "duration": 1,
+      "midi": 62,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "2fa23751-770a-494d-8867-8e44d18a7202",
+      "start": 5,
+      "duration": 1,
+      "midi": 65,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "8b06d1a2-f770-4189-8838-cd0e6cb4a59f",
+      "start": 6,
+      "duration": 1,
+      "midi": 69,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "344127b9-27f5-4f86-9a65-5b98df444eeb",
+      "start": 7,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "99ec9c06-9a3e-48ee-b904-7a45c25ae8d3",
+      "start": 8,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "e4e33e4d-fb51-412d-b84a-2a793a4e16b5",
+      "start": 9,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "f6d2f6ce-1d03-4491-89cb-2e79128783fb",
+      "start": 10,
+      "duration": 1,
+      "midi": 72,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "6f780435-67a2-4d7b-a6f7-ba36c79652f6",
+      "start": 11,
+      "duration": 1,
+      "midi": 71,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "295bf44a-afe9-4e6e-b92a-2b5550d679d1",
+      "start": 12,
+      "duration": 1,
+      "midi": 69,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "bb24bb89-875e-4925-9b91-f04efc8c4de0",
+      "start": 13,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "6459f150-b29a-44ae-8a64-4992316d559b",
+      "start": 14,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "fa66e208-40d8-4edb-8981-43751a507115",
+      "start": 15,
+      "duration": 1,
+      "midi": null,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "81448238-2062-4c40-a139-cd7f5fa29141",
+      "start": 16,
+      "duration": 1,
+      "midi": 65,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "bb791c3e-6412-4abf-8ec9-988268d19ef5",
+      "start": 17,
+      "duration": 1,
+      "midi": 69,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "8684da67-99e2-4bf7-a533-44bfef930e03",
+      "start": 18,
+      "duration": 1,
+      "midi": 72,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "aca488d7-7b03-4cea-bf57-1f1ad2d6a700",
+      "start": 19,
+      "duration": 1,
+      "midi": 69,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "c5cea173-9e54-44dd-8892-e009335d6834",
+      "start": 20,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "8c081518-3a67-4306-b61d-b6922ec63d4c",
+      "start": 21,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "44a755a9-6b96-43e8-818b-2d2bcaf9af59",
+      "start": 22,
+      "duration": 1,
+      "midi": 71,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "390b5068-aaec-4353-865f-22c81ec7142a",
+      "start": 23,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "e98f8926-0003-4a6c-a00f-d1823c832c45",
+      "start": 24,
+      "duration": 1,
+      "midi": 62,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "919eba3d-e86b-4ae2-ab96-735c1b2874a7",
+      "start": 25,
+      "duration": 1,
+      "midi": 65,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "5a57ed54-7d89-4be3-aa55-c3a8873f5fd3",
+      "start": 26,
+      "duration": 1,
+      "midi": 69,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "57801680-4ca1-4124-9b09-1ddae919bcb9",
+      "start": 27,
+      "duration": 1,
+      "midi": 67,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "6f292acc-ff06-449b-9248-a440cdfe5069",
+      "start": 28,
+      "duration": 1,
+      "midi": 64,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "ad9d4b38-55d4-49d2-94da-cab12b9813e8",
+      "start": 29,
+      "duration": 1,
+      "midi": 62,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "3b6ecaf0-d564-492d-9590-2ef533fcd79f",
+      "start": 30,
+      "duration": 1,
+      "midi": 60,
+      "confidence": 1,
+      "lyric": ""
+    },
+    {
+      "id": "31afeecc-5384-460a-b22f-03c8a8da0042",
+      "start": 31,
+      "duration": 1,
+      "midi": null,
+      "confidence": 1,
+      "lyric": ""
+    }
+  ]
+}

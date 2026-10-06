@@ -1,0 +1,2 @@
+# Install only for the optional CREPE comparison. Default recognition does not need it.
+torchcrepe==0.0.24

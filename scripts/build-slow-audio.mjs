@@ -1,0 +1,11 @@
+import {build} from 'esbuild';
+import {mkdir,copyFile} from 'node:fs/promises';
+import {createRequire} from 'node:module';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {localBuildResolver} from './build-resolver.mjs';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..'),require=createRequire(import.meta.url);
+await mkdir(path.join(root,'public/vendor'),{recursive:true});
+await build({stdin:{contents:"export {SoundTouchNode} from '@soundtouchjs/audio-worklet'; export {SoundTouch} from '@soundtouchjs/core';",resolveDir:root},plugins:[localBuildResolver(root)],tsconfigRaw:{},absWorkingDir:root,bundle:true,format:'esm',platform:'browser',target:'es2022',outfile:path.join(root,'public/vendor/slow-audio.js'),minify:true,legalComments:'eof'});
+await copyFile(require.resolve('@soundtouchjs/audio-worklet/processor'),path.join(root,'public/vendor/soundtouch-processor.js'));
+await mkdir(path.join(root,'licenses'),{recursive:true});await copyFile(path.join(root,'node_modules/@soundtouchjs/audio-worklet/LICENSE'),path.join(root,'licenses/soundtouchjs.txt'));

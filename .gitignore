@@ -1,0 +1,13 @@
+node_modules/
+.venv/
+runtime/
+exports/
+*.log
+.env
+.env.*
+!.env.example
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.npm-cache/
+*.tmp

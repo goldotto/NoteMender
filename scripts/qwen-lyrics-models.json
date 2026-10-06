@@ -1,0 +1,12 @@
+{
+  "asr": {
+    "repo": "Qwen/Qwen3-ASR-0.6B",
+    "revision": "3b885f72b1733a6a50dc17a597fb4135c3d656a0",
+    "folder": "Qwen3-ASR-0.6B"
+  },
+  "aligner": {
+    "repo": "Qwen/Qwen3-ForcedAligner-0.6B",
+    "revision": "6f4d7c9606feb7adf282c9e4b139f28e8695d867",
+    "folder": "Qwen3-ForcedAligner-0.6B"
+  }
+}

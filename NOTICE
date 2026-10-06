@@ -1,0 +1,10 @@
+NoteMender
+
+Project-authored code and documentation are licensed under the MIT License
+in LICENSE. This permits use, modification and redistribution, including
+commercial use, subject to the license terms.
+
+Third-party libraries, model assets and their source files retain their
+original licenses and notices. The project license does not replace or
+restrict permissions granted by those upstream licenses. See
+licenses/THIRD_PARTY_NOTICES.md and third_party/soundtouchjs/README.md.
