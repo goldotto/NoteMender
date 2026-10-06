@@ -17,3 +17,8 @@ jobs:
       - run: npm ci
       - run: npm run build
       - run: npm test
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m unittest discover -s tests -p 'test_install_qwen_readiness.py'
+      - run: python -m unittest discover -s tests -p 'test_nagisa_windows_compat.py'

@@ -7,6 +7,7 @@ import sys
 import time
 import unicodedata
 from lyric_alignment_windows import context_windows, quiet_ranges, own_core, repair_windows, adopt_repair, units_key, stitch_segments
+from nagisa_windows_compat import prepare_nagisa_for_windows
 
 CHUNK_SECONDS = 30
 LANGUAGES = {'zh': 'Chinese', 'en': 'English', 'yue': 'Cantonese', 'ja': 'Japanese', 'ko': 'Korean', 'fr': 'French', 'de': 'German', 'it': 'Italian', 'pt': 'Portuguese', 'ru': 'Russian', 'es': 'Spanish'}
@@ -53,6 +54,7 @@ def chunk_ranges(length, sample_rate=16000):
 def main(request):
     started = time.perf_counter()
     progress('加载 Qwen 歌词组件', .01)
+    prepare_nagisa_for_windows()
     import numpy as np
     import soundfile as sf
     import torch

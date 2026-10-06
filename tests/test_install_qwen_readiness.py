@@ -2,8 +2,11 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
+from types import ModuleType
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +67,27 @@ class LocalQwenReadinessTests(unittest.TestCase):
         lock = {'qwen-asr': '0.0.6', 'transformers': '4.57.6', 'numpy': '1.26.4'}
         installed = {'Qwen-ASR': '0.0.6', 'transformers': '4.57.5', 'numpy': '1.26.4'}
         self.assertEqual(INSTALLER.missing_lock_packages(installed, lock), ['transformers'])
+
+    def test_import_readiness_installs_path_compat_before_qwen_import(self):
+        events = []
+        qwen_asr = ModuleType('qwen_asr')
+        qwen_asr.Qwen3ASRModel = object
+        qwen_asr.Qwen3ForcedAligner = object
+        imports = {'qwen_asr': qwen_asr, 'nagisa': ModuleType('nagisa')}
+
+        def import_module(name):
+            events.append(name)
+            return imports[name]
+
+        with (
+            patch.object(INSTALLER, 'IMPORTS', ['qwen_asr', 'nagisa']),
+            patch.object(INSTALLER, 'prepare_nagisa_for_windows', side_effect=lambda: events.append('compat')),
+            patch.object(INSTALLER.importlib, 'import_module', side_effect=import_module),
+            patch.dict(sys.modules, {'qwen_asr': qwen_asr}),
+        ):
+            self.assertEqual(INSTALLER.failed_imports(), [])
+
+        self.assertEqual(events, ['compat', 'qwen_asr', 'nagisa'])
 
 
 if __name__ == '__main__':

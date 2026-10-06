@@ -10,6 +10,10 @@ import subprocess
 import sys
 from urllib.parse import urlencode
 from urllib.request import urlopen
+SCRIPT_DIRECTORY = str(Path(__file__).resolve().parent)
+if SCRIPT_DIRECTORY not in sys.path:
+    sys.path.insert(0, SCRIPT_DIRECTORY)
+from nagisa_windows_compat import prepare_nagisa_for_windows
 
 
 REQUIRED_MODEL_FILES = {
@@ -51,6 +55,12 @@ def missing_lock_packages(installed, lock):
 
 def failed_imports():
     failed = []
+    try:
+        # qwen_asr imports nagisa itself; install the Windows DyNet path
+        # workaround before any dependency import can trigger nagisa.__init__.
+        prepare_nagisa_for_windows()
+    except Exception:
+        return ['nagisa']
     try:
         importlib.invalidate_caches()
         for module in IMPORTS:
