@@ -21,8 +21,10 @@ REQUIRED_MODEL_FILES = {
     'generation_config.json', 'merges.txt', 'model.safetensors',
     'preprocessor_config.json', 'tokenizer_config.json', 'vocab.json',
 }
+# Validate the audio entry points used by this application. Importing the
+# unrelated Omni vision facade requires torchvision, which ASR does not use.
 IMPORTS = [
-    'numpy', 'PIL', 'psutil', 'qwen_asr', 'qwen_omni_utils',
+    'numpy', 'PIL', 'psutil', 'qwen_asr',
     'transformers', 'accelerate', 'huggingface_hub', 'tokenizers',
     'safetensors', 'regex', 'nagisa', 'soynlp', 'six',
 ]
@@ -182,7 +184,9 @@ def main():
     root = Path(sys.argv[1]).resolve()
     directory = root / 'runtime' / 'lyrics-qwen'
     dependencies = directory / 'dependencies'
-    dependencies.mkdir(parents=True, exist_ok=True)
+    verify_only = '--verify-only' in sys.argv
+    if not verify_only:
+        dependencies.mkdir(parents=True, exist_ok=True)
     sys.path.insert(0, str(dependencies))
     lock_path = root / 'scripts' / 'qwen-lyrics-dependencies.lock.json'
     if lock_path.exists():
@@ -194,6 +198,19 @@ def main():
             'qwen-omni-utils': '0.0.9', 'huggingface-hub': '0.36.0',
             'numpy': '1.26.4', 'qwen-asr': '0.0.6',
         }
+    if verify_only:
+        installed = installed_distributions(dependencies)
+        missing = missing_lock_packages(installed, lock)
+        if missing:
+            raise RuntimeError('本地 Qwen 依赖未就绪：' + ', '.join(missing))
+        failures = failed_imports()
+        if failures:
+            raise RuntimeError('本地 Qwen 依赖导入失败：' + ', '.join(failures))
+        specs = json.loads((root / 'scripts' / 'qwen-lyrics-models.json').read_text(encoding='utf-8'))
+        if not models_ready(directory, specs, installed):
+            raise RuntimeError('本地 Qwen 模型完整性检查失败')
+        print('本地 Qwen 组件完整且可导入；仅验证，未下载或安装。', flush=True)
+        return
     if '--models-only' not in sys.argv:
         installed = installed_distributions(dependencies)
         missing = missing_lock_packages(installed, lock)

@@ -68,6 +68,21 @@ class LocalQwenReadinessTests(unittest.TestCase):
         installed = {'Qwen-ASR': '0.0.6', 'transformers': '4.57.5', 'numpy': '1.26.4'}
         self.assertEqual(INSTALLER.missing_lock_packages(installed, lock), ['transformers'])
 
+    def test_audio_readiness_does_not_require_optional_omni_vision_facade(self):
+        qwen_asr = ModuleType('qwen_asr')
+        qwen_asr.Qwen3ASRModel = object
+        qwen_asr.Qwen3ForcedAligner = object
+        def import_module(name):
+            if name == 'qwen_omni_utils':
+                raise ModuleNotFoundError("No module named 'torchvision'")
+            return qwen_asr if name == 'qwen_asr' else ModuleType(name)
+        with (
+            patch.object(INSTALLER, 'prepare_nagisa_for_windows'),
+            patch.object(INSTALLER.importlib, 'import_module', side_effect=import_module),
+            patch.dict(sys.modules, {'qwen_asr': qwen_asr}),
+        ):
+            self.assertEqual(INSTALLER.failed_imports(), [])
+
     def test_import_readiness_installs_path_compat_before_qwen_import(self):
         events = []
         qwen_asr = ModuleType('qwen_asr')
