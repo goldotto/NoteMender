@@ -89,10 +89,18 @@ def probe(request):
                 importlib.import_module(name)
             directory = Path(request['directory'])
             marker = json.loads((directory / 'ready.json').read_text(encoding='utf-8'))
+            required = {'rosvot/model.pt', 'rosvot/config.yaml', 'rwbd/model.pt', 'rwbd/config.yaml', 'rmvpe/model.pt'}
+            if not required.issubset(marker.get('fingerprints', {})):
+                raise ValueError('ROSVOT 检查点清单不完整')
+            if not (directory / 'ROSVOT' / 'inference' / 'rosvot.py').is_file():
+                raise ValueError('ROSVOT 源文件缺失')
             for relative, digest in marker['fingerprints'].items():
                 if relative == 'source':
                     continue
-                file = directory / 'ROSVOT' / 'checkpoints' / relative
+                base = (directory / 'ROSVOT' / 'checkpoints').resolve()
+                file = (base / relative).resolve()
+                if not file.is_relative_to(base):
+                    raise ValueError('ROSVOT 检查点路径无效')
                 if not file.is_file() or (request.get('deep') and sha(file) != digest):
                     raise ValueError('ROSVOT 检查点不完整')
         else:

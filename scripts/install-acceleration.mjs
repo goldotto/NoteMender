@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {pythonFor} from '../src/python-runtime.mjs';
-import {accelerationModelReady,accelerationReady,accelerationRepairPlan,ensurePip,missingPythonPackages,runProcess} from './install-runtime.mjs';
+import {accelerationModelReady,accelerationReady,accelerationRepairPlan,ensurePip,fileWithDigest,missingPythonPackages,runProcess} from './install-runtime.mjs';
 import {sources} from './download-sources.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
@@ -12,6 +12,7 @@ const gpu=process.argv.includes('--gpu');
 const component=gpu?'gpu':'cpu';
 const directory=path.join(root,'runtime','acceleration',component);
 const modelPath=path.join(root,'runtime','models','basic-pitch','nmp.onnx');
+const modelSpec=JSON.parse(await readFile(path.join(root,'scripts','component-models.json'),'utf8')).basic;
 const python=await pythonFor(root);
 const ortVersion=gpu?'1.22.0':'1.22.1';
 const env={...process.env,PIP_DISABLE_PIP_VERSION_CHECK:'1',PIP_DEFAULT_TIMEOUT:'120',PIP_RETRIES:'8'};
@@ -23,7 +24,8 @@ async function run(command,args,extraEnv={}){
 }
 
 const probeEnv={...env,PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter)};
-const existingReady=await accelerationReady({directory,modelPath,component,python,cwd:root,env:probeEnv});
+const pinnedModelReady=await fileWithDigest(path.dirname(modelPath),modelSpec.file,modelSpec.sha256,{minimumBytes:modelSpec.size});
+const existingReady=pinnedModelReady&&await accelerationReady({directory,modelPath,component,python,cwd:root,env:probeEnv});
 if(existingReady){
   console.log(`已发现可用的${gpu?'GPU':'CPU'}加速组件与完整模型，直接复用本地文件。`);
   process.exit(0);
@@ -104,7 +106,7 @@ await mkdir(path.dirname(modelPath),{recursive:true});
 let modelIsComplete=false;
 try{
   const existing=await stat(modelPath);
-  if(existing.isFile()&&existing.size>=100_000){
+    if(existing.isFile()&&existing.size===modelSpec.size&&pinnedModelReady){
     const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
     modelIsComplete=result.code===0;
   }
@@ -115,7 +117,7 @@ if(!modelIsComplete){
     const response=await fetch(url,{signal:AbortSignal.timeout(60000)});
     if(!response.ok)throw Error(`模型下载失败 ${response.status}`);
     const data=Buffer.from(await response.arrayBuffer());
-    if(data.length<100_000||data.subarray(0,100).toString().includes('git-lfs'))throw Error('下载内容不是完整 ONNX 模型');
+    if(data.length!==modelSpec.size||createHash('sha256').update(data).digest('hex')!==modelSpec.sha256)throw Error('ONNX 模型未通过固定 SHA-256 校验');
     await writeFile(modelPath+'.part',data);
     await rename(modelPath+'.part',modelPath);
     const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});

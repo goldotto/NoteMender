@@ -6,6 +6,8 @@
 
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
+$env:PYTHONNOUSERSITE = '1'
+$env:PYTHONDONTWRITEBYTECODE = '1'
 Set-Location -LiteralPath $PSScriptRoot
 
 # 固定版本与 SHA-256：镜像文件若损坏或被替换就拒绝安装。
@@ -56,16 +58,24 @@ function Get-VerifiedFile([string[]]$Urls, [string]$Path, [string]$Hash) {
         $temporary = "$Path.part"
         try {
             Write-Host "下载：$url"
-            Invoke-WebRequest -Uri $url -OutFile $temporary -TimeoutSec 900 -MaximumRedirection 8 -UseBasicParsing
-            if (-not (Test-Hash $temporary $Hash)) { throw 'SHA-256 校验不通过' }
+            & curl.exe --fail --location --continue-at '-' --connect-timeout 20 --speed-time 60 --speed-limit 1024 --output $temporary $url
+            if ($LASTEXITCODE -ne 0) { throw '下载未完成；保留已下载部分，重试时续传' }
+            if (-not (Test-Hash $temporary $Hash)) {
+                Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+                throw 'SHA-256 校验不通过'
+            }
             Move-Item -LiteralPath $temporary -Destination $Path -Force
             return
         } catch {
             Write-Warning "$url 下载失败：$($_.Exception.Message)"
-            Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
         }
     }
     throw "全部下载地址都失败：$Path。请检查网络后重试。"
+}
+
+function Ordered-Sources([string[]]$Urls) {
+    if ($env:NOTEMENDER_DOWNLOAD_REGION -eq 'global') { return @($Urls[-1]) + @($Urls[0..($Urls.Length-2)]) }
+    return $Urls
 }
 
 function Assert-Command([string]$File, [string[]]$Arguments, [string]$ErrorText) {
@@ -92,7 +102,7 @@ function Test-Python311([string]$File) {
 function Test-AudioEnvironment([string]$File) {
     if (-not (Test-Python311 $File)) { return $false }
     try {
-        & $File -c 'import av, librosa, numpy, soundfile, torch, torchaudio; from demucs.pretrained import get_model; from demucs.apply import apply_model' 2>$null | Out-Null
+        & $File -c "import av, librosa, numpy, soundfile, torch, torchaudio, importlib.metadata as m; from demucs.pretrained import get_model; from demucs.apply import apply_model; assert m.version('demucs') == '4.0.1' and librosa.__version__ == '0.11.0' and numpy.__version__ == '1.26.4'; assert torch.__version__ in ('2.5.1+cpu', '2.7.1+cu128') and torchaudio.__version__ == torch.__version__" 2>$null | Out-Null
         return $LASTEXITCODE -eq 0
     } catch { return $false }
 }
@@ -172,11 +182,11 @@ if (Test-Node22 $nodeExe) {
 } else {
     New-Item -ItemType Directory -Path $downloads -Force | Out-Null
     $nodeZip = Join-Path $downloads $nodeArchive
-    Get-VerifiedFile @(
+    Get-VerifiedFile (Ordered-Sources @(
         "https://repo.huaweicloud.com/nodejs/v$nodeVersion/$nodeArchive",
         "https://mirrors.tuna.tsinghua.edu.cn/nodejs-release/v$nodeVersion/$nodeArchive",
         "https://nodejs.org/dist/v$nodeVersion/$nodeArchive"
-    ) $nodeZip $nodeHash
+    )) $nodeZip $nodeHash
     $unpackDir = Join-Path $downloads "node-v$nodeVersion-win-x64"
     Expand-Archive -LiteralPath $nodeZip -DestinationPath $downloads -Force
     if (-not (Test-Path -LiteralPath (Join-Path $unpackDir 'node.exe'))) { throw 'Node 压缩包内容不完整' }
@@ -252,21 +262,22 @@ if (-not (Test-Path -LiteralPath $venvPython)) {
 }
 Assert-Command $venvPython @('-c', 'import sys; assert sys.version_info[:2] == (3, 11)') '虚拟环境不是可用的 Python 3.11；请检查 .venv 后重试'
 if (-not (Test-AudioEnvironment $venvPython)) {
-$pypi = 'https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple'
-$torch = 'https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/'
 $env:PIP_DISABLE_PIP_VERSION_CHECK = '1'
 $env:PIP_DEFAULT_TIMEOUT = '120'
-Write-Host '从国内镜像安装 PyTorch CPU、Demucs 与音频依赖；这一步下载量较大。'
-& $venvPython -m pip install --retries 8 --index-url $torch --no-deps 'torch==2.5.1+cpu' 'torchaudio==2.5.1+cpu'
-if ($LASTEXITCODE -ne 0) {
-    Write-Warning '交大 PyTorch 镜像未成功，尝试 PyTorch 官方源。'
-    Assert-Command $venvPython @('-m', 'pip', 'install', '--retries', '8', '--index-url', 'https://download.pytorch.org/whl/cpu', '--no-deps', 'torch==2.5.1+cpu', 'torchaudio==2.5.1+cpu') 'PyTorch CPU 下载失败；重跑脚本可继续'
+& $venvPython -m pip --version | Out-Null
+if ($LASTEXITCODE -ne 0) { Assert-Command $venvPython @('-m', 'ensurepip', '--upgrade', '--default-pip') '离线初始化 pip 失败' }
+$installedTorch = $false
+foreach ($source in (Ordered-Sources @('https://mirror.sjtu.edu.cn/pytorch-wheels/cpu/', 'https://download.pytorch.org/whl/cpu'))) {
+    & $venvPython -m pip install --retries 3 --index-url $source --no-deps 'torch==2.5.1+cpu' 'torchaudio==2.5.1+cpu'
+    if ($LASTEXITCODE -eq 0) { $installedTorch = $true; break }
 }
-& $venvPython -m pip install --retries 4 --index-url $pypi -r (Join-Path $PSScriptRoot 'requirements-demucs.txt')
-if ($LASTEXITCODE -ne 0) {
- Write-Warning '国内 PyPI 镜像未成功，尝试官方源。'
- Assert-Command $venvPython @('-m', 'pip', 'install', '--retries', '4', '--index-url', 'https://pypi.org/simple', '-r', (Join-Path $PSScriptRoot 'requirements-demucs.txt')) 'Python 依赖安装失败；重跑脚本可继续'
+if (-not $installedTorch) { throw 'PyTorch CPU 下载未完成，可重试' }
+$installedAudio = $false
+foreach ($source in (Ordered-Sources @('https://pypi.tuna.tsinghua.edu.cn/simple', 'https://mirrors.aliyun.com/pypi/simple/', 'https://pypi.org/simple'))) {
+    & $venvPython -m pip install --retries 3 --index-url $source -r (Join-Path $PSScriptRoot 'requirements-demucs.txt')
+    if ($LASTEXITCODE -eq 0) { $installedAudio = $true; break }
 }
+if (-not $installedAudio) { throw '音频依赖下载未完成，可重试' }
 Assert-Command $venvPython @('-c', 'import demucs, torch, torchaudio, librosa, av') 'Python 音频依赖检查失败'
 }
 $pythonForAudio = $venvPython
@@ -287,10 +298,10 @@ if (-not (Test-Hash $modelFile $modelHash)) {
         Write-Host "复用电脑上已有的 Demucs 模型：$cached"
     }
 }
-Get-VerifiedFile @(
+Get-VerifiedFile (Ordered-Sources @(
     "https://hf-mirror.com/lainlives/audio-separator-models/resolve/main/$modelName",
     "https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/$modelName"
-) $modelFile $modelHash
+)) $modelFile $modelHash
 $env:TORCH_HOME = Join-Path $runtime 'models'
 if (-not (Test-Path -LiteralPath (Join-Path $runtime 'demucs-ready.json'))) {
     Assert-Command $pythonForAudio @((Join-Path $PSScriptRoot 'scripts\separate.py'), '--prepare') 'Demucs 模型加载失败'

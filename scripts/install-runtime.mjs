@@ -18,6 +18,7 @@ export async function ensurePip(python,{cwd,env,run=runProcess}={}){
   const options={cwd,env,stdio:'pipe'};
   const available=await run(python,['-m','pip','--version'],options);
   if(available.code===0)return;
+  if(env?.NOTEMENDER_READONLY_PYTHON==='1')throw Error('复用环境没有 pip，且包内离线 pip 不可用；请重新解压轻量版或基础版。不会修改外部 Python。');
   const bootstrapped=await run(python,['-m','ensurepip','--upgrade','--default-pip'],{cwd,env});
   if(bootstrapped.code!==0)throw Error('离线初始化 pip 失败；请确认 Python 自带 ensurepip wheel 完整。');
   const checked=await run(python,['-m','pip','--version'],options);

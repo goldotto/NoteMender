@@ -5,8 +5,8 @@ import {EventEmitter} from 'node:events';
 import {mkdtemp,mkdir,writeFile,readFile,rm} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import {componentsService,installerCommand} from '../src/components-service.mjs';
-import {discoverPython,inspectComponent} from '../src/component-discovery.mjs';
+import {componentsService,installerCommand,installerRuntime} from '../src/components-service.mjs';
+import {discoverPython,inspectComponent,componentLocation} from '../src/component-discovery.mjs';
 import {componentConfig,saveComponentConfig} from '../src/component-config.mjs';
 import {pythonFor} from '../src/python-runtime.mjs';
 import {accelerationEnv} from '../src/compute-runtime.mjs';
@@ -89,4 +89,34 @@ test('setup edition uses its bundled foundation without an external scan; a comp
     const local=path.join(root,'.venv','Scripts','python.exe');await mkdir(path.dirname(local),{recursive:true});await writeFile(local,'');
     assert.equal(await pythonFor(root,{owned:true}),local);
   }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('installing an overlay reuses the validated external interpreter and bundled pip without global writes',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'notemender-installer-reuse-'));
+  try{
+    await mkdir(path.join(root,'scripts'));await writeFile(path.join(root,'scripts','component-models.json'),'{}');
+    const external=path.join(os.tmpdir(),'other-environment','python.exe');
+    await saveComponentConfig(root,{bindings:{audio:{python:external,modelHome:'models'},gpu:{python:external,directory:'external-gpu-site'}}});
+    const wheels=path.join(root,'runtime','python','Lib','ensurepip','_bundled');await mkdir(wheels,{recursive:true});await writeFile(path.join(wheels,'pip-24.0-py3-none-any.whl'),'fixture');
+    const runtime=await installerRuntime(root,'lyrics');
+    assert.equal(runtime.python,external);assert.equal(runtime.env.NOTEMENDER_INSTALL_PYTHON,external);assert.equal(runtime.env.NOTEMENDER_READONLY_PYTHON,'1');
+    assert.ok(runtime.env.PYTHONPATH.includes('external-gpu-site'));assert.ok(runtime.env.PYTHONPATH.includes('pip-24.0-py3-none-any.whl'));assert.equal(runtime.env.PYTHONDONTWRITEBYTECODE,'1');
+    const singing=await componentLocation(root,'singing',{localOnly:true});assert.equal(singing.python,external);assert.equal(singing.overlay,'external-gpu-site');
+    const audio=await componentLocation(root,'audio',{localOnly:true});assert.equal(audio.python,external);assert.equal(audio.modelHome,path.join(root,'runtime','models'));assert.equal(audio.external,false);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('repaired local venv takes precedence even when an old portable marker survives',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'notemender-repaired-'));
+  try{
+    const local=path.join(root,'.venv','Scripts','python.exe');await mkdir(path.dirname(local),{recursive:true});await writeFile(local,'');await mkdir(path.join(root,'runtime'));await writeFile(path.join(root,'runtime','portable-ready.json'),'{}');
+    assert.equal(await pythonFor(root,{owned:true}),local);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('component refresh recovers after analysis activity ends',async()=>{
+  let analysing=true;await fixture(async({request})=>{
+    assert.equal((await request('status?refresh=1')).body.busy,true);analysing=false;
+    const ready=(await request('status?refresh=1')).body;assert.equal(ready.busy,undefined);assert.equal(ready.components.find(c=>c.id==='audio').ready,true);
+  },{canStart:()=>!analysing,inspect:async(root,id)=>({ready:id==='audio'})});
 });

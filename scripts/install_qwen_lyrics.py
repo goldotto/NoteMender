@@ -10,6 +10,8 @@ import subprocess
 import sys
 from urllib.parse import urlencode
 from urllib.request import urlopen
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='backslashreplace')
 SCRIPT_DIRECTORY = str(Path(__file__).resolve().parent)
 if SCRIPT_DIRECTORY not in sys.path:
     sys.path.insert(0, SCRIPT_DIRECTORY)
@@ -87,6 +89,8 @@ def ensure_pip():
     )
     if available.returncode == 0:
         return
+    if os.environ.get('NOTEMENDER_READONLY_PYTHON') == '1':
+        raise RuntimeError('复用环境及包内离线 pip 不可用；请重新解压基础版。不会修改外部 Python。')
     subprocess.run(
         [sys.executable, '-m', 'ensurepip', '--upgrade', '--default-pip'],
         check=True,

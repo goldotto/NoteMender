@@ -1,4 +1,9 @@
 {
+  "basic": {
+    "file": "nmp.onnx",
+    "size": 230444,
+    "sha256": "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec"
+  },
   "audio": {
     "file": "955717e8-8726e21a.th",
     "size": 84141911,

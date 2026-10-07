@@ -14,7 +14,7 @@ export async function accelerationEnv(root,device='auto'){
     const candidate=path.join(root,'runtime','acceleration',name);
     try{await access(path.join(candidate,'ready.json'));await access(path.join(candidate,'onnxruntime','__init__.py'));if(name==='gpu')await access(path.join(candidate,'torch','__init__.py'));directory=candidate;break;}catch{}
   }
-  return {python,directory,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:(await audioRuntime(root)).modelHome}};
+  return {python,directory,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONDONTWRITEBYTECODE:'1',PYTHONNOUSERSITE:'1',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:(await audioRuntime(root)).modelHome}};
 }
 export async function modelFingerprint(root){
   const hash=createHash('sha256'),model=JSON.parse(await readFile(path.join(root,'public/models/basic-pitch/model.json'),'utf8'));

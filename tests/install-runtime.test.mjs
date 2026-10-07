@@ -54,6 +54,12 @@ test('offline pip bootstrap runs only after pip is missing',async()=>{
   assert.deepEqual(missing,[['-m','pip','--version'],['-m','ensurepip','--upgrade','--default-pip'],['-m','pip','--version']]);
 });
 
+test('missing pip never bootstraps or modifies a reused external Python',async()=>{
+  const calls=[];
+  await assert.rejects(ensurePip('external-python',{env:{NOTEMENDER_READONLY_PYTHON:'1'},run:async(command,args)=>{calls.push(args);return {code:1};}}),/不会修改外部 Python/);
+  assert.deepEqual(calls,[['-m','pip','--version']]);
+});
+
 test('acceleration repair separates a missing model from missing packages and GPU wheels',async()=>{
   const modelOnly=accelerationRepairPlan({modelReady:false,missingDependencies:[],missingTorch:[]});
   assert.equal(modelOnly.checkOrDownloadModel,true);

@@ -1,11 +1,21 @@
 import {spawn} from 'node:child_process';
-import {access,mkdir,readFile,statfs,writeFile} from 'node:fs/promises';
+import {access,mkdir,readFile,readdir,statfs,writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {COMPONENTS,orderedComponents,DOWNLOAD_SOURCES} from '../public/component-catalog.mjs';
 import {componentConfig,saveComponentConfig} from './component-config.mjs';
 import {componentLocation,inspectComponent,discoverPython,knownModelHomes,knownQwenPaths} from './component-discovery.mjs';
 import {terminateProcess} from './process-control.mjs';
+import {pythonFor} from './python-runtime.mjs';
+import {accelerationEnv} from './compute-runtime.mjs';
+
+export async function installerRuntime(root,id){
+  const runtime=['lyrics','singing'].includes(id)?await accelerationEnv(root,id==='singing'?'cuda':'auto'):{python:await pythonFor(root),env:{...process.env}};
+  const bundled=path.join(root,'runtime','python','Lib','ensurepip','_bundled');
+  let pip=null;try{pip=(await readdir(bundled)).find(name=>/^pip-.*\.whl$/.test(name));}catch{}
+  const local=path.resolve(runtime.python).toLowerCase().startsWith(path.resolve(root).toLowerCase()+path.sep);
+  return {...runtime,env:{...runtime.env,NOTEMENDER_INSTALL_PYTHON:runtime.python,NOTEMENDER_READONLY_PYTHON:local?'0':'1',PYTHONPATH:[pip?path.join(bundled,pip):null,runtime.env.PYTHONPATH].filter(Boolean).join(path.delimiter),PYTHONNOUSERSITE:'1',PYTHONDONTWRITEBYTECODE:'1'}};
+}
 
 export function installerCommand(root,id,node=process.execPath){
   const script=path.join(root,'scripts');
@@ -42,8 +52,9 @@ export function componentsService(root,{canStart=()=>true,beforeStart=async()=>{
   function log(job,value){const text=String(value).replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);}}
   async function execute(job,id,signal,region){
     const [command,args]=installerCommand(root,id);signal.throwIfAborted();
+    const runtime=await installerRuntime(root,id);
     // Installer subprocesses always use owned interpreter/targets. Reused environments stay read-only.
-    await new Promise((resolve,reject)=>{let tail='',buffer='';child=spawnImpl(command,args,{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...process.env,NOTEMENDER_INSTALL_MANAGED:'1',NOTEMENDER_DOWNLOAD_REGION:region,PYTHONIOENCODING:'utf-8',PYTHONUNBUFFERED:'1',PIP_CACHE_DIR:path.join(root,'runtime','downloads','pip'),TEMP:path.join(root,'runtime','downloads','temp'),TMP:path.join(root,'runtime','downloads','temp')}});
+    await new Promise((resolve,reject)=>{let tail='',buffer='';child=spawnImpl(command,args,{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...runtime.env,NOTEMENDER_INSTALL_MANAGED:'1',NOTEMENDER_DOWNLOAD_REGION:region,PYTHONIOENCODING:'utf-8',PYTHONUNBUFFERED:'1',PIP_CACHE_DIR:path.join(root,'runtime','downloads','pip'),TEMP:path.join(root,'runtime','downloads','temp'),TMP:path.join(root,'runtime','downloads','temp')}});
       const output=chunk=>{buffer+=chunk.toString();const lines=buffer.split(/[\r\n]+/);buffer=lines.pop();for(const line of lines){log(job,line);tail=(tail+'\n'+line).slice(-2000);try{const data=JSON.parse(line);if(data.stage)job.stage=data.stage;if(Number.isFinite(data.progress))job.unitProgress=Math.max(0,Math.min(1,data.progress));}catch{}}};child.stdout.on('data',output);child.stderr.on('data',output);
       const abort=()=>terminateProcess(child).catch(()=>{});signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();const finish=()=>{signal.removeEventListener('abort',abort);if(buffer)log(job,buffer);};
       child.once('error',error=>{finish();reject(error);});child.once('close',code=>{finish();child=null;signal.aborted?reject(new DOMException('已取消','AbortError')):code===0?resolve():reject(Error(tail.trim()||'组件安装失败，退出码 '+code));});
@@ -92,7 +103,7 @@ export function componentsService(root,{canStart=()=>true,beforeStart=async()=>{
         const ids=orderedComponents(body.components),region=['auto','cn','global'].includes(body.region)?body.region:'auto';
         send(202,{job:start('install',async(job,signal)=>{
           let free=Infinity;try{const value=await statfs(root);free=Number(value.bavail)*Number(value.bsize);}catch{}
-          const existing=await componentConfig(root),steps=[];for(const id of ids){const where=await location(root,id),checked=await inspect(root,id,where,{signal});if(checked.ready){log(job,COMPONENTS.find(c=>c.id===id).name+' 已可用，直接复用');continue;}steps.push(id);}
+          const steps=[];for(const id of ids){const where=await location(root,id),checked=await inspect(root,id,where,{signal});if(checked.ready){log(job,COMPONENTS.find(c=>c.id===id).name+' 已可用，直接复用');continue;}steps.push(id);}
           const required=steps.reduce((sum,id)=>sum+COMPONENTS.find(c=>c.id===id).space*1024**3,0);if(free<required)throw Error('程序所在磁盘空间不足，请换到空间充足的磁盘');
           await mkdir(path.join(root,'runtime','downloads','temp'),{recursive:true});
           for(let i=0;i<steps.length;i++){const id=steps[i];signal.throwIfAborted();job.stage='安装 '+COMPONENTS.find(c=>c.id===id).name;job.progress=i/steps.length;job.component=id;job.unitProgress=null;await execute(job,id,signal,region);signal.throwIfAborted();const checked=await inspect(root,id,await location(root,id,{localOnly:true}),{deep:true,signal});if(!checked.ready)throw Error('安装后检查失败：'+checked.reason);const config=await componentConfig(root);if(config.bindings?.[id]){delete config.bindings[id];await saveComponentConfig(root,config);}job.progress=(i+1)/steps.length;}

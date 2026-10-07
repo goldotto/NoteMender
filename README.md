@@ -23,9 +23,9 @@
 
 | 下载 | 包含内容 | 使用方式 |
 | --- | --- | --- |
-| `windows-base.zip` 基础离线版（推荐，约 0.81 GB） | 程序、Node.js、Python、CPU 音频环境和四／六轨分轨模型 | 解压后双击 `Start-NoteMender.cmd`；首次显示安装与组件管理界面 |
-| `windows-setup.zip` 轻量版（约 65 MB） | 程序、Node.js、Python 基础解释器及浏览器识别模型 | 可编辑、试听和浏览器扒谱；需要分轨等功能时在组件管理勾选 |
-| `source.zip` 源码版 | 最新源码、已构建网页、模型和说明 | 自行准备 Node.js 22+；见下面的命令 |
+| `windows-base-gui.zip` 基础离线版（推荐，约 0.81 GB） | 程序、Node.js、Python、CPU 音频环境和四／六轨分轨模型 | 解压后双击 `Start-NoteMender.cmd`；首次显示安装与组件管理界面 |
+| `windows-setup-gui.zip` 轻量版（约 65 MB） | 程序、Node.js、Python 基础解释器及浏览器识别模型 | 可编辑、试听和浏览器扒谱；需要分轨等功能时在组件管理勾选 |
+| `source-components.zip` 源码版 | 最新源码、已构建网页、模型和说明 | 自行准备 Node.js 22+；见下面的命令 |
 
 基础版无需首次下载即可分轨、扒谱、试听和人工编辑。Qwen 歌词、NVIDIA 显卡和 ROSVOT 实验组件按需添加，默认不勾选。未安装自动歌词识别时，手工歌词输入与编辑仍然可用。
 

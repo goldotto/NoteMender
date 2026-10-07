@@ -5,6 +5,7 @@ import path from 'node:path';
 import {pythonFor} from './python-runtime.mjs';
 import {componentBinding,audioRuntime} from './component-config.mjs';
 import {terminateProcess} from './process-control.mjs';
+import {accelerationEnv} from './compute-runtime.mjs';
 
 // Model hashes are read from the pinned package manifest, rather than trusting a ready marker.
 export async function modelSpecs(root){return JSON.parse(await readFile(path.join(root,'scripts','component-models.json'),'utf8'));}
@@ -21,7 +22,8 @@ export function runProbe(command,args,{cwd,env=process.env,signal,timeout=60000,
 }
 export async function componentLocation(root,id,{localOnly=false}={}){
   const binding=localOnly?null:await componentBinding(root,id),audio=localOnly?{modelHome:path.join(root,'runtime','models')}:await audioRuntime(root);
-  const python=await pythonFor(root,{owned:localOnly});
+  // localOnly selects installation targets, not a different interpreter.
+  const python=await pythonFor(root);
   if(id==='audio'||id==='six'){
     const ownHome=path.join(root,'runtime','models'),spec=(await modelSpecs(root))[id],ownModel=spec&&await exists(path.join(ownHome,'hub','checkpoints',spec.file));
     return {python:binding?.python||python,modelHome:binding?.modelHome||(ownModel?ownHome:audio.modelHome),external:Boolean(binding)};
@@ -31,7 +33,11 @@ export async function componentLocation(root,id,{localOnly=false}={}){
     const directory=binding?.directory||path.join(root,'runtime','lyrics-qwen'),models=JSON.parse(await readFile(path.join(root,'scripts','qwen-download-manifest.json'),'utf8'));
     return {python:binding?.python||python,directory,dependencies:binding?binding.dependencies:path.join(directory,'dependencies'),overlay:binding?.overlay,metadata:binding?.metadata,modelPaths:binding?.modelPaths||Object.fromEntries(Object.entries(models).map(([key,spec])=>[key,path.join(directory,'models',spec.folder)])),external:Boolean(binding)};
   }
-  return {python:await pythonFor(root),directory:path.join(root,'runtime','singing'),external:false};
+  if(id==='singing'){
+    const runtime=await accelerationEnv(root,'cuda');
+    return {python:runtime.python,overlay:runtime.directory,directory:path.join(root,'runtime','singing'),external:false};
+  }
+  throw Error('不支持的组件');
 }
 export async function inspectComponent(root,id,location,{deep=false,signal,run=runProbe}={}){
   const details={...location,component:id,deep};
@@ -40,7 +46,7 @@ export async function inspectComponent(root,id,location,{deep=false,signal,run=r
   const overlays=[id==='lyrics'?location.dependencies:null,id==='singing'?path.join(location.directory,'dependencies'):null,location.overlay,(['cpu','gpu'].includes(id)?location.directory:null)].filter(Boolean);
   try{
     if(!await exists(location.python))return {ready:false,reason:'Python 运行环境尚未安装'};
-    const result=await run(location.python,[path.join(root,'scripts','probe-components.py'),JSON.stringify(details)],{cwd:root,signal,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[...overlays,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1',PYTHONDONTWRITEBYTECODE:'1'}});
+    const result=await run(location.python,[path.join(root,'scripts','probe-components.py'),JSON.stringify(details)],{cwd:root,signal,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[...overlays,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),HF_HUB_OFFLINE:'1',TRANSFORMERS_OFFLINE:'1',PYTHONDONTWRITEBYTECODE:'1',PYTHONNOUSERSITE:'1'}});
     if(result.code!==0)return {ready:false,reason:result.stderr?.trim()||'组件启动失败'};
     return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1));
   }catch(error){if(signal?.aborted)throw error;return {ready:false,reason:error.message};}
