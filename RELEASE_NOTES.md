@@ -1,5 +1,12 @@
 # NoteMender 2.5.0-demo.7 · 基础离线版与可选组件安装
 
+## 本次修复
+
+- 修复复用外部运行环境时加速验证记录与 ONNX 模型路径读取错误，恢复合格的 NVIDIA 分轨和 CREPE 路径。
+- 提供与固定依赖版本匹配的既有验证记录，组件安装后无需重复验证已合格的执行路径；本机验证记录优先，未通过的 Basic Pitch CUDA 路径继续使用 CPU。
+- 相同运行环境内切换 CPU／CUDA 分析时复用分析进程，减少重复加载；进度明确区分各模型的实际设备。
+- 浏览器容量不足时，候选和替换前备份转存本机文件，避免整曲生成后无法采用；恢复备份兼容旧记录。
+
 ## 推荐下载
 
 **[基础离线版 · 约 809 MB](https://github.com/goldotto/NoteMender/releases/download/v2.5.0-demo.7/NoteMender-2.5.0-demo.7-windows-base-gui.zip)**：完整 ZIP，解压后运行 `NoteMender/Start-NoteMender.cmd`。包含 Node.js、Python、CPU 音频环境、四／六轨分离模型和浏览器扒谱模型，支持分轨、扒谱、试听和人工编辑。

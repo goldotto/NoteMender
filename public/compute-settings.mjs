@@ -12,7 +12,7 @@ export function resolveCompute(settings,status={}){
   const wantsGPU=value.device!=='cpu',cuda=status.backends?.cuda,cpu=status.backends?.cpu;
   const basic=wantsGPU&&cuda?.qualified?'cuda':cpu?.qualified?'cpu':null;
   const reasons=[];
-  if(wantsGPU&&!cuda?.qualified)reasons.push(cuda?.reason||'显卡推理尚未通过一致性验证');
+  if(wantsGPU&&!cuda?.qualified)reasons.push('Basic Pitch 显卡推理：'+(cuda?.reason||'尚未通过一致性验证'));
   if(!basic)reasons.push(cpu?.reason||'原生 CPU 推理未就绪，Basic Pitch 使用当前后端');
   return {...value,basicBackend:basic?`onnx-${basic}`:'tfjs-cpu',basicFingerprint:(basic?status.backends[basic]?.fingerprint:status.legacyFingerprint)||'legacy',pitchBackend:wantsGPU&&status.crepeCUDA?'cuda':'cpu',separationBackend:wantsGPU&&status.demucsCUDA?'cuda':'cpu',reasons};
 }

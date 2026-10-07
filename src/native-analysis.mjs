@@ -14,9 +14,10 @@ export class NativeAnalysis {
     return this.stopping;
   }
   async start(config){
-    const key=JSON.stringify({device:config.device||'auto',threads:config.threads||0});
+    const runtime=await accelerationEnv(this.root,config.runtimeDevice||config.device);
+    const key=JSON.stringify({python:runtime.python,directory:runtime.directory,modelFile:runtime.modelFile,threads:config.threads||0});
     if(this.child&&this.key===key)return;
-    await this.stop();const runtime=await accelerationEnv(this.root,config.device);
+    await this.stop();
     const child=this.spawnImpl(runtime.python,[path.join(this.root,'scripts/native_analysis.py'),'--serve',String(config.threads||0)],{cwd:this.root,windowsHide:true,env:runtime.env,stdio:['pipe','pipe','pipe']});
     this.child=child;this.key=key;let output='',error='';
     child.stderr.on('data',chunk=>{error=(error+chunk).slice(-3000);});

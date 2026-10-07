@@ -1,11 +1,21 @@
 import importlib.util
 from pathlib import Path
 import unittest
+from unittest.mock import patch
+import types
 import numpy as np
 spec=importlib.util.spec_from_file_location('adapter',Path(__file__).resolve().parents[1]/'scripts/native_analysis.py')
 adapter=importlib.util.module_from_spec(spec)
 spec.loader.exec_module(adapter)
 class AdapterTests(unittest.TestCase):
+    def test_session_uses_bound_model_and_reuses_session(self):
+        paths=[]
+        fake=types.SimpleNamespace(SessionOptions=lambda:types.SimpleNamespace(),InferenceSession=lambda path,**kwargs:paths.append(path) or object())
+        adapter.SESSIONS.clear()
+        with patch.dict('sys.modules',{'onnxruntime':fake}),patch.dict('os.environ',{'JIANPU_BASIC_MODEL':'D:/external/models/nmp.onnx'}):
+            self.assertIs(adapter.session('cpu'),adapter.session('cpu'))
+        self.assertEqual(paths,['D:/external/models/nmp.onnx'])
+        adapter.SESSIONS.clear()
     def test_padding_and_window_boundaries(self):
         audio=np.arange(44100,dtype=np.float32)
         blocks=list(adapter.windows(audio))

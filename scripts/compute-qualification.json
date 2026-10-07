@@ -1,0 +1,36 @@
+{
+    "cuda":  {
+                 "passed":  false,
+                 "legacyFingerprint":  "ddd7bcc9ef8a495f1f37993c20c48977b66ff3d03b48976a4d577aa6f11d10fd",
+                 "onnxFingerprint":  "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec",
+                 "runtimeVersion":  "1.22.0",
+                 "torchVersion":  "2.7.1+cu128",
+                 "adapterVersion":  1
+             },
+    "cpu":  {
+                "passed":  false,
+                "legacyFingerprint":  "ddd7bcc9ef8a495f1f37993c20c48977b66ff3d03b48976a4d577aa6f11d10fd",
+                "onnxFingerprint":  "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec",
+                "runtimeVersion":  "1.22.1",
+                "torchVersion":  null,
+                "adapterVersion":  1
+            },
+    "cudaCPU":  {
+                    "passed":  true,
+                    "legacyFingerprint":  "ddd7bcc9ef8a495f1f37993c20c48977b66ff3d03b48976a4d577aa6f11d10fd",
+                    "onnxFingerprint":  "2c3c1d144bfa61ad236e92e169c13535c880469a12a047d4e73451f2c059a0ec",
+                    "runtimeVersion":  "1.22.0",
+                    "torchVersion":  "2.7.1+cu128",
+                    "adapterVersion":  1
+                },
+    "demucs":  {
+                   "passed":  true,
+                   "torchVersion":  "2.7.1+cu128",
+                   "adapterVersion":  2
+               },
+    "crepe":  {
+                  "passed":  true,
+                  "torchVersion":  "2.7.1+cu128",
+                  "adapterVersion":  1
+              }
+}

@@ -12,10 +12,12 @@ export function computeService(root,{runner=new NativeAnalysis(root),canStart=()
     let cpuProbe=probe;
     if(probe.providers?.includes('CUDAExecutionProvider'))try{cpuProbe=await runner.request({kind:'probe'},{device:'cpu',threads:0},signal);}catch(e){if(signal?.aborted)throw e;cpuProbe={};}
     const gate=await qualification(root,probe,cpuProbe);
+    const useGPUCPU=!gate.cpu&&gate.cudaCPU&&probe.providers?.includes('CPUExecutionProvider');
+    const selectedCPUProbe=useGPUCPU?probe:cpuProbe;
     let legacyFingerprint='legacy';try{legacyFingerprint=await modelFingerprint(root);}catch{}
     const backends={};for(const device of ['cpu','cuda']){
-      const actual=device==='cpu'?cpuProbe:probe,provider=device==='cpu'?'CPUExecutionProvider':'CUDAExecutionProvider',installed=(actual.providers||[]).includes(provider);
-      backends[device]={installed,qualified:installed&&Boolean(gate[device]),fingerprint:`${gate.onnx||'missing'}:${actual.ortVersion||'missing'}:${device}:fp32`,reason:!installed?(device==='cuda'?'可选显卡组件未就绪，当前使用原生 CPU':actual.ortError||error||'请安装可选 CPU 加速组件'):!gate[device]?'尚未通过与当前模型的一致性验证':null};
+      const actual=device==='cpu'?selectedCPUProbe:probe,provider=device==='cpu'?'CPUExecutionProvider':'CUDAExecutionProvider',installed=(actual.providers||[]).includes(provider),qualified=installed&&Boolean(device==='cpu'?(gate.cpu||useGPUCPU):gate.cuda);
+      backends[device]={installed,qualified,runtimeDevice:device==='cpu'&&useGPUCPU?'cuda':device,fingerprint:`${gate.onnx||'missing'}:${actual.ortVersion||'missing'}:${device}:fp32`,reason:!installed?(device==='cuda'?'可选显卡组件未就绪，当前使用原生 CPU':actual.ortError||error||'请安装可选 CPU 加速组件'):!qualified?'尚未通过与当前模型的一致性验证':null};
     }
     backends.cuda.cpuFallbackQualified=Boolean(gate.cudaCPU||(probe.ortVersion===cpuProbe.ortVersion&&gate.cpu));
     if(backends.cuda.qualified&&!backends.cuda.cpuFallbackQualified){backends.cuda.qualified=false;backends.cuda.reason='显卡组件中的 CPU 回退后端尚未通过一致性验证';}
@@ -44,7 +46,7 @@ export function computeService(root,{runner=new NativeAnalysis(root),canStart=()
           if(!caps.backends[requested]?.qualified)throw Error(caps.backends[requested]?.reason||'后端未通过验证');
           // CPU must also be qualified before permitting automatic CUDA fallback.
           if(requested==='cuda'&&!caps.backends.cuda.cpuFallbackQualified)throw Error('请先验证显卡组件中的 CPU 回退后端');
-          const result=await runner.analyse(bytes,'basic',{...config,device:requested,actualDevice:requested},{},controller.signal);
+          const result=await runner.analyse(bytes,'basic',{...config,device:requested,actualDevice:requested,runtimeDevice:caps.backends[requested].runtimeDevice},{},controller.signal);
           result.metadata.backend=`onnx-${result.metadata.device}`;
           const fingerprint=caps.backends[result.metadata.device].fingerprint.split(':');
           fingerprint[1]=result.metadata.runtimeVersion;

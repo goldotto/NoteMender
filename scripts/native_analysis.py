@@ -83,7 +83,8 @@ def session(device):
         if THREADS:
             options.intra_op_num_threads = THREADS
         providers = [('CUDAExecutionProvider', {'use_tf32': '0', 'cudnn_conv_algo_search': 'HEURISTIC'})] if device == 'cuda' else ['CPUExecutionProvider']
-        current = ort.InferenceSession(str(ROOT / 'runtime/models/basic-pitch/nmp.onnx'), sess_options=options, providers=providers)
+        model_file = os.environ.get('JIANPU_BASIC_MODEL') or str(ROOT / 'runtime/models/basic-pitch/nmp.onnx')
+        current = ort.InferenceSession(model_file, sess_options=options, providers=providers)
         if device == 'cuda' and current.get_providers()[0] != 'CUDAExecutionProvider':
             raise RuntimeError('CUDA provider 未实际启用')
         SESSIONS[key] = current

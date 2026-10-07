@@ -56,7 +56,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
         const cached=await cachedJob(data,url.searchParams.get('full')==='1',execution);if(cached){current=null;send(200,{id:cached.id,cached:true});return true;}
         await beforeStart();
         const id=randomUUID(),dir=path.join(runtime,'job-'+id);await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'input.wav'),data);await writeFile(path.join(dir,'execution.json'),JSON.stringify(execution));
-        job={id,state:'running',message:'Demucs 分离中（CPU），请稍候…',progress:.1,dir,child:null};jobs.set(id,job);current=id;
+        job={id,state:'running',message:requested.mode==='performance'&&requested.device!=='cpu'?'Demucs 分离中（优先 NVIDIA 显卡），请稍候…':'Demucs 分离中（CPU），请稍候…',progress:.1,dir,child:null};jobs.set(id,job);current=id;
         child=spawnImpl(pythonRuntime.python,[path.join(root,'scripts','separate.py'),path.join(dir,'input.wav'),path.join(dir,'vocals.wav'),path.join(dir,'other.wav')],{cwd:root,windowsHide:true,env:{...pythonRuntime.env,JIANPU_COMPUTE:JSON.stringify(requested),JIANPU_SEPARATION_MODEL:model,TORCH_HOME:(await componentLocation(root,model==='htdemucs_6s'?'six':'audio')).modelHome,PYTHONIOENCODING:'utf-8'},stdio:['ignore','pipe','pipe']});job.child=child;
         let stderr='';child.stderr.on('data',c=>{stderr=(stderr+c.toString()).slice(-1500);const match=stderr.match(/(\d+)%[^%]*$/);if(match)job.progress=.1+Number(match[1])*.008;});
         child.stdout.on('data',c=>{const message=c.toString().trim();if(message)job.message=message.slice(-150);});
