@@ -56,6 +56,6 @@ export function computeService(root,{runner=new NativeAnalysis(root),canStart=()
     }catch(e){if(!res.destroyed)send(e.name==='AbortError'?499:400,{error:e.message});return true;}
     finally{res.off('close',close);}
   };
-  handler.runner=runner;handler.status=status;handler.close=()=>runner.stop();handler.busy=()=>busy;
+  handler.runner=runner;handler.status=status;handler.invalidate=()=>{statusCache=null;};handler.close=()=>runner.stop();handler.busy=()=>busy;
   return handler;
 }

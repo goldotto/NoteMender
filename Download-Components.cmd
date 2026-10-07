@@ -1,4 +1,3 @@
 @echo off
 cd /d "%~dp0"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0scripts\install-components.ps1"
-if errorlevel 1 pause
+call "%~dp0Manage-Components.cmd"

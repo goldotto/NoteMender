@@ -14,13 +14,15 @@ import {analysisService} from './src/analysis-service.mjs';
 import {audioResourceService} from './src/audio-resources.mjs';
 import {singingService} from './src/singing-service.mjs';
 import {computeService} from './src/compute-service.mjs';
+import {componentsService} from './src/components-service.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const INSTANCE=createHash('sha256').update(path.resolve(ROOT).toLowerCase()).digest('hex').slice(0,16);
 const MIME={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json','.txt':'text/plain; charset=utf-8','.bin':'application/octet-stream','.wasm':'application/wasm','.wav':'audio/wav','.svg':'image/svg+xml'};
 export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugins'),analysisRoot=ROOT,exportDirectory=path.join(ROOT,'exports')}={}) {
-  let decoding=false;const token=randomBytes(24).toString('hex'),compute=computeService(analysisRoot,{canStart:()=>!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()}),separation=separationService(ROOT,{beforeStart:async()=>{if(compute.busy()||compute.runner.pending||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前片段分析完成');await compute.close();}}),analysis=analysisService(analysisRoot,{nativeRunner:compute.runner,canStart:()=>!compute.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()}),resources=audioResourceService(analysisRoot),singing=singingService(analysisRoot,{beforeStart:async()=>{if(compute.busy()||compute.runner.pending||separation.busy()||lyrics.busy()||analysis.busy())throw Error('已有分析任务运行中');await compute.close();}});
-  const lyrics=lyricsService(analysisRoot,{canStart:()=>!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!analysis.busy(),beforeStart:()=>compute.close()});
+  let decoding=false,components;const token=randomBytes(24).toString('hex'),compute=computeService(analysisRoot,{canStart:()=>!components?.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()}),separation=separationService(analysisRoot,{beforeStart:async()=>{if(components?.busy()||compute.busy()||compute.runner.pending||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前片段分析或组件任务完成');await compute.close();}}),analysis=analysisService(analysisRoot,{nativeRunner:compute.runner,canStart:()=>!components?.busy()&&!compute.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()}),resources=audioResourceService(analysisRoot),singing=singingService(analysisRoot,{beforeStart:async()=>{if(components?.busy()||compute.busy()||compute.runner.pending||separation.busy()||lyrics.busy()||analysis.busy())throw Error('已有分析或组件任务运行中');await compute.close();}});
+  const lyrics=lyricsService(analysisRoot,{canStart:()=>!components?.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!analysis.busy(),beforeStart:()=>compute.close()});
+  components=componentsService(analysisRoot,{canStart:()=>!decoding&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),beforeStart:async()=>{compute.invalidate();await compute.close();}});
   const app=http.createServer(async(req,res)=>{
     const send=(status,body,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(typeof body==='string'||Buffer.isBuffer(body)?body:JSON.stringify(body));};
     try {
@@ -28,6 +30,7 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       if(!/^127\.0\.0\.1:\d+$/.test(host)&&!/^localhost:\d+$/.test(host))return send(403,{error:'仅允许本机访问'});
       const url=new URL(req.url,`http://${host}`),origin=req.headers.origin;
       if(origin&&origin!==`http://${host}`)return send(403,{error:'不允许跨站请求'});
+      if(await components(req,res,url,send,token))return;
       if(await lyrics(req,res,url,send,token))return;
       if(await resources(req,res,url,send,token))return;
       if(await singing(req,res,url,send,token))return;
@@ -36,7 +39,7 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       if(await analysis(req,res,url,send,token))return;
       if(['/api/decode','/api/tempo'].includes(url.pathname)&&req.method==='POST'){
         if(req.headers['x-studio-token']!==token)return send(403,{error:'会话已过期，请刷新'});
-        if(decoding)return send(429,{error:'正在解码另一份音频，请稍候'});
+        if(decoding||components.busy())return send(429,{error:'正在解码或处理组件，请稍候'});
         decoding=true;const controller=new AbortController();const onClose=()=>{if(!res.writableEnded)controller.abort();};res.on('close',onClose);
         try{let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>120*1024*1024)return send(413,{error:'音频不能超过 120 MB'});chunks.push(c);}if(!size)return send(400,{error:'音频为空'});const mode=url.pathname==='/api/tempo'?'tempo':'decode';return send(200,await decodeLocal(ROOT,Buffer.concat(chunks),controller.signal,mode),mode==='tempo'?'application/json; charset=utf-8':'audio/wav');}
         catch(e){return send(400,{error:e.message});}finally{decoding=false;res.off('close',onClose);}
@@ -89,7 +92,7 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       const content=await readFile(filename);send(200,req.method==='HEAD'?'':content,MIME[path.extname(filename)]||'application/octet-stream');
     }catch(e){if(!res.headersSent)send(e.code==='ENOENT'?404:400,{error:e.code==='ENOENT'?'文件不存在':'请求无法处理'});else res.end();}
   });
-  app.stopAnalysis=()=>{compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>app.stopAnalysis());return app;
+  app.stopAnalysis=()=>{components.close();compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>app.stopAnalysis());return app;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT||4317),app=createApp();

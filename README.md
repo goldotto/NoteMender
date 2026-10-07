@@ -21,16 +21,19 @@
 
 到 [最新预览版](https://github.com/goldotto/NoteMender/releases/tag/v2.5.0-demo.7) 按用途选择。桌面版本支持 Windows x64。
 
-| 下载 | 适合谁 | 启动方式 |
+| 下载 | 包含内容 | 使用方式 |
 | --- | --- | --- |
-| `windows-setup.zip` 下载环境版 | 希望下载体积小、按需安装功能 | 解压后双击 `Start-NoteMender.cmd`；分轨与歌词等功能用 `Download-Components.cmd` 下载 |
-| `windows-offline.zip.001` 等标准离线版 | 希望不用安装环境，直接使用分轨及歌词 | 下载全部分片及解压脚本，在同一目录运行 `Extract-NoteMender.cmd`，再双击启动 |
-| `source.zip` 源码版 | 开发或自己管理运行环境 | Node.js 22+；执行下面的命令 |
-| `windows-gpu-addon.zip.001` 等显卡离线扩展 | 已有标准离线版、希望使用 NVIDIA 显卡 | 下载全部显卡分片和 `gpu-manifest.json`，运行 `Extract-GPU-Addon.cmd`；解压后运行 `Install-GPU-Addon.cmd` 并输入程序目录 |
+| `windows-base.zip` 基础离线版（推荐，约 0.81 GB） | 程序、Node.js、Python、CPU 音频环境和四／六轨分轨模型 | 解压后双击 `Start-NoteMender.cmd`；首次显示安装与组件管理界面 |
+| `windows-setup.zip` 轻量版（约 65 MB） | 程序、Node.js、Python 基础解释器及浏览器识别模型 | 可编辑、试听和浏览器扒谱；需要分轨等功能时在组件管理勾选 |
+| `source.zip` 源码版 | 最新源码、已构建网页、模型和说明 | 自行准备 Node.js 22+；见下面的命令 |
 
-下载环境版已附 Node.js 和 Python 基础解释器，编辑、MIDI 和浏览器识别可直接使用；其他组件写入程序目录。标准离线版附 CPU 音频环境、四／六轨 Demucs 模型与 Qwen 歌词模型；无需另装 Node.js、Python，也不需要首次下载模型。显卡扩展包含现有 CUDA 12.8 运行组件，需要相容的 NVIDIA 驱动，不安装或替换驱动。ROSVOT 演唱实验由下载入口单独安装。
+基础版无需首次下载即可分轨、扒谱、试听和人工编辑。Qwen 歌词、NVIDIA 显卡和 ROSVOT 实验组件按需添加，默认不勾选。未安装自动歌词识别时，手工歌词输入与编辑仍然可用。
 
-离线分片、对应的 manifest、解压 CMD 和 `Extract-NoteMender.ps1` 必须放在同一目录。标准包使用 `Extract-NoteMender.cmd`；显卡扩展使用 `Extract-GPU-Addon.cmd`。解压脚本先验证分片与完整压缩包。已有目标目录不会被覆盖；可以在 PowerShell 中用 `-Destination` 指定新目录。
+首次启动会询问是否扫描常用环境和模型缓存；也可跳过。只有你允许后才扫描。发现兼容组件后，点击“校验并复用”直接关联，不重新下载。复用的外部程序和环境应继续保留，换电脑时需要重新关联。
+
+以后随时点击程序顶部“组件管理”，或双击 `Manage-Components.cmd`。安装界面提供组件清单、磁盘空间、下载源选择、进度、取消与重试。新依赖和模型放在本程序目录；不会覆盖系统环境或安装显卡驱动。
+
+下载源提供中国大陆镜像与官方源，失败自动切换。模型文件和 CUDA wheel 使用固定 SHA-256 校验；网络连通性仍取决于所在网络和镜像服务。大型下载支持续传，失败后可在相同目录重试。
 
 ```text
 npm ci
@@ -40,18 +43,11 @@ npm start
 
 源码版也含已构建网页和浏览器模型；有 Node.js 时可直接使用启动脚本。服务只监听本机，地址由启动器自动打开。标准离线版 CPU 处理耗时取决于歌曲及硬件；原生加速必须通过一致性检查，未通过时继续使用现有浏览器后端。
 
-### 可选本机组件
+### 可选组件
 
-| 功能 | 安装入口 |
-| --- | --- |
-| 基础音频解码与 Demucs 分轨 | `Download-Components.cmd` |
-| CPU 原生加速 | `scripts/安装加速组件.ps1` |
-| NVIDIA 显卡加速 | `scripts/安装加速组件.ps1 -GPU` |
-| 六轨器乐候选 | `scripts/安装候选组件.ps1` |
-| ROSVOT 演唱候选 | `scripts/安装候选组件.ps1 -Singing` |
-| Qwen 歌词转写与对齐 | `scripts/安装歌词组件.ps1` |
+打开“组件管理”勾选所需组件即可。人声／器乐四轨及吉他／钢琴六轨在基础版中已经包含；轻量版可补装。Qwen 用于歌词转写和时间对齐，显卡组件用于支持的加速路径，ROSVOT 用于额外的人声候选。安装状态、显卡可用状态与后端一致性验证是不同事项，安装后仍会保留未通过路径的回退。
 
-组件写入本项目 `runtime/` 或项目虚拟环境；安装脚本先检查实际依赖与模型，已就绪时复用，只下载缺失部分。首次下载缺失组件需要联网，模型就绪后在本机运行。显卡后端还需要通过一致性检查；分轨、CREPE 与歌词可用性由实际组件及设备检测决定，Basic Pitch 未通过的执行路径保持回退。详细步骤见 [组件说明](docs/组件说明.md)。当前模式始终可作为默认使用方式。
+需要命令行安装的开发者仍可使用 `scripts/install-components.ps1` 和对应单组件脚本。细节见 [组件说明](docs/组件说明.md)。
 
 ## 使用
 

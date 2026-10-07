@@ -1,3 +1,4 @@
+import {createComponentManager,applyComponentAvailability} from './components-ui.mjs';
 import {transcriptionTempo} from './tempo-fallback.mjs';
 import {ProjectAudioRestore} from './project-audio.mjs';
 import {exportName,importedProjectStem,isExportPath} from './export-name.mjs';
@@ -1267,3 +1268,24 @@ async function openLinkedProject(){
   toast('已打开本机工程，可直接试听、转调与微调。');
 }
 const linkedProjectReady=openLinkedProject().catch(e=>toast(e.message,true));
+
+// Component status is independent of score selection and saved projects.
+let componentStatus=null,componentManager=null;
+function enforceComponentState(){if(componentStatus)applyComponentAvailability(componentStatus);}
+async function componentStateChanged(value){
+  componentStatus=value;
+  await checkSeparation();await checkLyricsStatus();
+  const singing=value.components?.find(c=>c.id==='singing');singingReady=singing?.ready===true;
+  $('singingStatus').textContent=singingReady?'演唱精细分音已就绪':'演唱精细分音未安装，可在“组件管理”添加。';
+  render();renderLyrics();enforceComponentState();
+  if($('computeMode').value==='performance'&&!value.busy)await refreshCompute(undefined,true).catch(()=>{});
+}
+on('componentsTop','click',async()=>{
+  $('componentsDialog').showModal();
+  if(!componentManager)componentManager=await createComponentManager($('componentsHost'),{onChanged:componentStateChanged});
+  else await componentManager.refresh();
+});
+// Existing renderers keep managing normal audio/selection conditions. Missing components
+// additionally keep their controls muted even when those renderers update disabled state.
+new MutationObserver(enforceComponentState).observe(document.body,{subtree:true,attributes:true,attributeFilter:['disabled']});
+fetch('/api/status').then(r=>r.json()).then(s=>fetch('/api/components/status',{headers:{'X-Studio-Token':s.token}})).then(r=>r.ok?r.json():Promise.reject(Error('组件状态不可用'))).then(componentStateChanged).catch(()=>{});

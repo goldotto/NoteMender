@@ -5,6 +5,7 @@ import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {accelerationEnv} from '../src/compute-runtime.mjs';
 import {ensurePip,fileWithDigest,missingPythonPackages,pythonPackagesReady,pythonProbe,runProcess} from './install-runtime.mjs';
+import {sources} from './download-sources.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const runtime=await accelerationEnv(root,'cuda');
@@ -129,7 +130,20 @@ async function download(url,file){
 
 if(process.argv.includes('--six')||!process.argv.includes('--singing')){
   if(await demucsReady())console.log('htdemucs_6s 的依赖、标记和本地模型完整，直接复用。');
-  else await run(python,[path.join(root,'scripts/separate.py'),'--prepare'],{JIANPU_SEPARATION_MODEL:'htdemucs_6s'});
+  else{
+    const spec=JSON.parse(await readFile(path.join(root,'scripts/component-models.json'),'utf8')).six;
+    const checkpoint=path.join(root,'runtime/models/hub/checkpoints',spec.file);await mkdir(path.dirname(checkpoint),{recursive:true});
+    if(!await fileWithDigest(path.dirname(checkpoint),spec.file,spec.sha256,{minimumBytes:spec.size})){
+      let complete=false;const domestic='https://hf-mirror.com/lainlives/audio-separator-models/resolve/main/'+spec.file,official='https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/'+spec.file;
+      for(const url of process.env.NOTEMENDER_DOWNLOAD_REGION==='global'?[official,domestic]:[domestic,official])try{
+        await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','20','--speed-time','60','--speed-limit','1024','--output',checkpoint+'.part',url]);
+        if(!await fileWithDigest(path.dirname(checkpoint),spec.file+'.part',spec.sha256,{minimumBytes:spec.size})){await unlink(checkpoint+'.part').catch(()=>{});throw Error('六轨模型 SHA-256 校验失败');}
+        await run(python,['-c','from pathlib import Path; import sys; Path(sys.argv[1]).replace(sys.argv[2])',checkpoint+'.part',checkpoint]);complete=true;break;
+      }catch(error){console.error(error.message);}
+      if(!complete)throw Error('六轨模型下载未完成，可在组件管理重试。');
+    }
+    await run(python,[path.join(root,'scripts/separate.py'),'--prepare'],{JIANPU_SEPARATION_MODEL:'htdemucs_6s'});
+  }
 }
 
 if(process.argv.includes('--singing')){
@@ -150,7 +164,7 @@ if(process.argv.includes('--singing')){
       const missing=await missingPythonPackages({python,expected:singingPackages,modules,cwd:sourceDirectory,env:singingEnv});
       if(!missing.length)throw Error('可选人声依赖版本完整，但 ROSVOT 或 Torch 导入失败；请检查源文件及显卡运行环境。');
       await ensurePip(python,{cwd:root,env});
-      for(const index of ['https://pypi.tuna.tsinghua.edu.cn/simple','https://pypi.org/simple'])if(!installed)try{
+      for(const index of sources('pypi'))if(!installed)try{
         await run(python,['-m','pip','install','--upgrade','--target',singingDependencies,'--no-deps','--index-url',index,...missing.map(name=>`${name}==${singingPackages[name]}`)],{PYTHONPATH:singingEnv.PYTHONPATH});
         installed=await pythonPackagesReady({python,expected:singingPackages,modules:singingModules,cwd:sourceDirectory,env:singingEnv});
       }catch(error){console.error(error.message);}

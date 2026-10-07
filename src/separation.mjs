@@ -6,10 +6,13 @@ import {pythonFor} from './python-runtime.mjs';
 import {requestCompute,accelerationEnv} from './compute-runtime.mjs';
 import {terminateProcess} from './process-control.mjs';
 import {saveAudioResource} from './audio-resources.mjs';
+import {audioRuntime} from './component-config.mjs';
+import {modelSpecs,componentLocation} from './component-discovery.mjs';
 export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
   const runtime=path.join(root,'runtime'),jobs=new Map();
   let current=null;
-  const ready=async()=>{try{await access(await pythonFor(root));await access(path.join(runtime,'demucs-ready.json'));return true;}catch{return false;}};
+  const modelFile=async id=>path.join((await componentLocation(root,id)).modelHome,'hub','checkpoints',(await modelSpecs(root))[id].file);
+  const ready=async()=>{try{await access(await pythonFor(root));await access(await modelFile('audio'));return true;}catch{return false;}};
   // This directory is generated exclusively by this application. Remove only old UUID job directories.
   async function cleanup(){try{for(const entry of await readdir(runtime,{withFileTypes:true})){if(!entry.isDirectory()||!/^job-[0-9a-f-]{36}$/.test(entry.name))continue;const dest=path.resolve(runtime,entry.name);if(dest.startsWith(path.resolve(runtime)+path.sep)&&(Date.now()-(await stat(dest)).mtimeMs)>86400000)await rm(dest,{recursive:true,force:true});}}catch{}}
   async function cachedJob(data,full=false,execution={mode:"standard"}){
@@ -32,7 +35,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
   cleanup();
   const handler=async(req,res,url,send,token)=>{
     if(!url.pathname.startsWith('/api/separation/'))return false;
-    if(url.pathname==='/api/separation/status'&&req.method==='GET'){let sixReady=false;try{await access(path.join(runtime,'demucs6-ready.json'));sixReady=true;}catch{}send(200,{ready:await ready(),models:['htdemucs',...(sixReady?['htdemucs_6s']:[])]});return true;}
+    if(url.pathname==='/api/separation/status'&&req.method==='GET'){let sixReady=false;try{await access(await modelFile('six'));sixReady=true;}catch{}send(200,{ready:await ready(),models:['htdemucs',...(sixReady?['htdemucs_6s']:[])]});return true;}
     if(req.headers['x-studio-token']!==token){send(403,{error:'会话已过期，请刷新'});return true;}
     if(url.pathname==='/api/separation/start'&&req.method==='POST'){
       if(current){send(409,{error:'已有分离任务运行中'});return true;}
@@ -42,7 +45,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
       try{
         let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>55*1024*1024)throw Error('分离音频超过 55 MB，请缩短歌曲');chunks.push(c);}const data=Buffer.concat(chunks);
         if(data.toString('ascii',0,4)!=='RIFF'||data.toString('ascii',8,12)!=='WAVE')throw Error('需要 WAV 音频');
-        const model=url.searchParams.get('model')||'htdemucs';if(!['htdemucs','htdemucs_6s'].includes(model))throw Error('不支持的分轨模型');let modelFingerprint=null;if(model==='htdemucs_6s')modelFingerprint=createHash('sha256').update(await readFile(path.join(runtime,'demucs6-ready.json'))).digest('hex');const audioStart=Number(url.searchParams.get('start')||0),audioEnd=Number(url.searchParams.get('end')||0);if(model==='htdemucs_6s'&&(!Number.isFinite(audioStart)||!Number.isFinite(audioEnd)||audioStart<0||audioEnd<=audioStart||audioEnd>3600))throw Error('六轨片段的原曲秒数范围无效');
+        const model=url.searchParams.get('model')||'htdemucs';if(!['htdemucs','htdemucs_6s'].includes(model))throw Error('不支持的分轨模型');let modelFingerprint=null;if(model==='htdemucs_6s'){await access(await modelFile('six'));modelFingerprint=(await modelSpecs(root)).six.sha256;}const audioStart=Number(url.searchParams.get('start')||0),audioEnd=Number(url.searchParams.get('end')||0);if(model==='htdemucs_6s'&&(!Number.isFinite(audioStart)||!Number.isFinite(audioEnd)||audioStart<0||audioEnd<=audioStart||audioEnd>3600))throw Error('六轨片段的原曲秒数范围无效');
         const requested=requestCompute(url),pythonRuntime=requested.mode==='performance'?await accelerationEnv(root,requested.device):{python:await pythonFor(root),env:process.env};
         const execution={...requested,component:pythonRuntime.directory||'baseline',...(model==='htdemucs_6s'?{model,modelFingerprint,audioStart,audioEnd}: {})};
         if(requested.mode==='performance'){
@@ -54,7 +57,7 @@ export function separationService(root,{beforeStart=()=>{},spawnImpl=spawn}={}){
         await beforeStart();
         const id=randomUUID(),dir=path.join(runtime,'job-'+id);await mkdir(dir,{recursive:true});await writeFile(path.join(dir,'input.wav'),data);await writeFile(path.join(dir,'execution.json'),JSON.stringify(execution));
         job={id,state:'running',message:'Demucs 分离中（CPU），请稍候…',progress:.1,dir,child:null};jobs.set(id,job);current=id;
-        child=spawnImpl(pythonRuntime.python,[path.join(root,'scripts','separate.py'),path.join(dir,'input.wav'),path.join(dir,'vocals.wav'),path.join(dir,'other.wav')],{cwd:root,windowsHide:true,env:{...pythonRuntime.env,JIANPU_COMPUTE:JSON.stringify(requested),JIANPU_SEPARATION_MODEL:model,TORCH_HOME:path.join(runtime,'models'),PYTHONIOENCODING:'utf-8'},stdio:['ignore','pipe','pipe']});job.child=child;
+        child=spawnImpl(pythonRuntime.python,[path.join(root,'scripts','separate.py'),path.join(dir,'input.wav'),path.join(dir,'vocals.wav'),path.join(dir,'other.wav')],{cwd:root,windowsHide:true,env:{...pythonRuntime.env,JIANPU_COMPUTE:JSON.stringify(requested),JIANPU_SEPARATION_MODEL:model,TORCH_HOME:(await componentLocation(root,model==='htdemucs_6s'?'six':'audio')).modelHome,PYTHONIOENCODING:'utf-8'},stdio:['ignore','pipe','pipe']});job.child=child;
         let stderr='';child.stderr.on('data',c=>{stderr=(stderr+c.toString()).slice(-1500);const match=stderr.match(/(\d+)%[^%]*$/);if(match)job.progress=.1+Number(match[1])*.008;});
         child.stdout.on('data',c=>{const message=c.toString().trim();if(message)job.message=message.slice(-150);});
         child.on('error',()=>{job.state='failed';job.error='无法启动 Python，请重新运行Download-Components.cmd。';current=null;});

@@ -143,40 +143,68 @@ def models_ready(directory, specs, installed):
         return False
 
 
-def download_model(spec, destination):
-    """Fetch pinned files only after local marker/file validation failed."""
-    repo = spec['repo']
-    base = f'https://modelscope.cn/api/v1/models/{repo}/repo'
-    with urlopen(base + '/files?' + urlencode({'Revision': spec['revision'], 'Recursive': 'true'}), timeout=60) as response:
-        listing = json.load(response)
-    if not listing.get('Success'):
-        raise RuntimeError('ModelScope 文件清单不可用')
-    files = []
-    for entry in listing['Data']['Files']:
-        name = entry['Path']
-        if entry['Type'] != 'blob' or not name.endswith(('.json', '.txt', '.safetensors')):
-            continue
+def pypi_sources():
+    values = ['https://pypi.tuna.tsinghua.edu.cn/simple', 'https://mirrors.aliyun.com/pypi/simple/', 'https://pypi.org/simple']
+    return [values[-1], *values[:-1]] if os.environ.get('NOTEMENDER_DOWNLOAD_REGION') == 'global' else values
+
+
+def model_urls(spec, name):
+    from urllib.parse import quote
+    ms = 'https://modelscope.cn/api/v1/models/' + spec['repo'] + '/repo?' + urlencode({'Revision': spec['revision'], 'FilePath': name})
+    revision = spec.get('hfRevision', spec['revision'])
+    urls = [ms, 'https://hf-mirror.com/' + spec['repo'] + '/resolve/' + revision + '/' + quote(name), 'https://huggingface.co/' + spec['repo'] + '/resolve/' + revision + '/' + quote(name)]
+    return [urls[-1], *urls[:-1]] if os.environ.get('NOTEMENDER_DOWNLOAD_REGION') == 'global' else urls
+
+
+def download_model(spec, destination, manifest=None):
+    """Pinned file hashes are independent of whichever download source is selected."""
+    if manifest is None:
+        manifests = json.loads((Path(__file__).parent / 'qwen-download-manifest.json').read_text(encoding='utf-8'))
+        manifest = next(value for value in manifests.values() if value['repo'] == spec['repo'])
+    files = manifest['files']
+    total = sum(item['size'] for item in files)
+    finished = 0
+    for entry in files:
+        name, size, expected_sha = entry['path'], entry['size'], entry['sha256']
         file = destination / name
         if not file.resolve().is_relative_to(destination.resolve()):
             raise RuntimeError('模型文件路径无效')
         file.parent.mkdir(parents=True, exist_ok=True)
-        size, sha = entry['Size'], entry['Sha256']
-        if not (file.exists() and file.stat().st_size == size and digest(file) == sha):
-            partial = file.with_name(file.name + '.part')
-            url = base + '?' + urlencode({'Revision': spec['revision'], 'FilePath': name})
-            print(f'下载 {repo}/{name} ({size / 1048576:.1f} MB)…', flush=True)
-            for attempt in range(3):
-                if partial.exists() and partial.stat().st_size == size:
-                    break
-                subprocess.run(['curl.exe', '--fail', '--location', '--continue-at', '-', '--retry', '2', '--connect-timeout', '30', '--speed-time', '90', '--speed-limit', '1024', '--output', str(partial), url], check=True)
-                if partial.stat().st_size == size:
-                    break
-            if partial.stat().st_size != size or digest(partial) != sha:
-                raise RuntimeError(f'{name} 下载校验未通过；保留下载供检查')
-            partial.replace(file)
-        files.append({'path': name, 'size': size, 'sha256': sha})
-    if not any(f['path'].endswith('.safetensors') for f in files):
-        raise RuntimeError('模型权重清单为空')
+        if file.exists() and file.stat().st_size == size and digest(file) == expected_sha:
+            finished += size
+            continue
+        if 'inline' in entry:
+            data = entry['inline'].encode('utf-8')
+            if len(data) != size or hashlib.sha256(data).hexdigest() != expected_sha:
+                raise RuntimeError('内置模型配置校验失败')
+            file.write_bytes(data)
+            finished += size
+            continue
+        partial = file.with_name(file.name + '.part')
+        complete = False
+        for url in model_urls({**manifest, **spec}, name):
+            print('尝试下载源：' + url.split('/')[2], flush=True)
+            try:
+                import time
+                process = subprocess.Popen(['curl.exe', '--silent', '--show-error', '--fail', '--location', '--continue-at', '-', '--retry', '1', '--connect-timeout', '20', '--speed-time', '60', '--speed-limit', '1024', '--output', str(partial), url])
+                while process.poll() is None:
+                    amount = partial.stat().st_size if partial.exists() else 0
+                    print(json.dumps({'stage': '下载 ' + spec['folder'] + ' · ' + name, 'progress': min(1, (finished + amount) / total)}, ensure_ascii=False), flush=True)
+                    time.sleep(1)
+                if process.returncode:
+                    raise subprocess.CalledProcessError(process.returncode, process.args)
+                if partial.stat().st_size != size or digest(partial) != expected_sha:
+                    partial.unlink(missing_ok=True)
+                    raise RuntimeError('下载文件 SHA-256 校验未通过')
+                partial.replace(file)
+                complete = True
+                break
+            except (subprocess.CalledProcessError, OSError, RuntimeError) as error:
+                print(str(error), flush=True)
+        if not complete:
+            raise RuntimeError(name + ' 各下载源均未完成；保留有效部分供下次续传')
+        finished += size
+        print(json.dumps({'stage': '下载 ' + spec['folder'] + ' · ' + name, 'progress': finished / total}, ensure_ascii=False), flush=True)
     return {**spec, 'files': files}
 
 
@@ -219,12 +247,12 @@ def main():
             import torch  # noqa: F401
             ensure_pip()
             repairs = [f'{name}=={lock[name]}' for name in missing]
-            for index in ['https://pypi.tuna.tsinghua.edu.cn/simple', 'https://pypi.org/simple']:
+            for index in pypi_sources():
                 try:
                     subprocess.run([sys.executable, '-m', 'pip', 'install', '--upgrade', '--no-deps', '--target', str(dependencies), '--index-url', index, '--timeout', '90', '--retries', '3', *sorted(set(repairs))], check=True)
                     break
                 except subprocess.CalledProcessError:
-                    if index.endswith('pypi.org/simple'):
+                    if index == pypi_sources()[-1]:
                         raise
             installed = installed_distributions(dependencies)
             missing = missing_lock_packages(installed, lock)

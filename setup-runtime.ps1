@@ -1,6 +1,7 @@
 ﻿param(
     [switch]$BasicOnly,
-    [switch]$CheckOnly
+    [switch]$CheckOnly,
+    [switch]$ProjectOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -39,6 +40,7 @@ function Test-Hash([string]$Path, [string]$Expected) {
 }
 
 function Find-CachedModel {
+    if ($ProjectOnly) { return $null }
     $candidates = @((Join-Path $modelDir $modelName))
     if ($env:TORCH_HOME) { $candidates += Join-Path $env:TORCH_HOME "hub\checkpoints\$modelName" }
     $candidates += Join-Path ([Environment]::GetFolderPath('UserProfile')) ".cache\torch\hub\checkpoints\$modelName"
@@ -96,6 +98,7 @@ function Test-AudioEnvironment([string]$File) {
 }
 
 function Find-InstalledPython311([switch]$RequireAudio) {
+    if ($ProjectOnly) { return $null }
     $candidates = @()
     $launcher = Get-Command py.exe -ErrorAction SilentlyContinue
     if ($launcher) {
@@ -161,7 +164,7 @@ if ($CheckOnly) {
 
 New-Item -ItemType Directory -Path $runtime -Force | Out-Null
 $nodeExe = Join-Path $nodeDir 'node.exe'
-$systemNode = Get-Command node.exe -ErrorAction SilentlyContinue
+$systemNode = if (-not $ProjectOnly) { Get-Command node.exe -ErrorAction SilentlyContinue }
 if (Test-Node22 $nodeExe) {
     Write-Host "复用本程序中的 Node.js：$nodeExe"
 } elseif (Test-Node22 $systemNode.Source) {
@@ -185,11 +188,14 @@ Write-Host '基础运行环境已经就绪。'
 if ($BasicOnly) { exit 0 }
 
 $pythonForAudio = $null
-if (Test-AudioEnvironment $venvPython) {
+if (Test-AudioEnvironment (Join-Path $pythonDir 'python.exe')) {
+    $pythonForAudio = Join-Path $pythonDir 'python.exe'
+    Write-Host '复用本程序内置的 Python 音频环境。'
+} elseif (Test-AudioEnvironment $venvPython) {
     $pythonForAudio = $venvPython
     Write-Host '复用本程序已有的 Python 音频环境。'
 } else {
-    $savedPython = if (Test-Path -LiteralPath $pythonPathFile) { [IO.File]::ReadAllText($pythonPathFile).Trim() }
+    $savedPython = if (-not $ProjectOnly -and (Test-Path -LiteralPath $pythonPathFile)) { [IO.File]::ReadAllText($pythonPathFile).Trim() }
     if (Test-AudioEnvironment $savedPython) {
         $pythonForAudio = $savedPython
         Write-Host "复用此前检测到的 Python 音频环境：$savedPython"
@@ -203,6 +209,13 @@ if (Test-AudioEnvironment $venvPython) {
 }
 
 $basePython = Join-Path $pythonDir 'python.exe'
+if ($ProjectOnly -and -not $pythonForAudio -and -not (Test-Python311 $basePython)) {
+    $settingsFile = Join-Path $runtime 'component-settings.json'
+    $selectedBase = $null
+    if (Test-Path -LiteralPath $settingsFile) { $selectedBase = (Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json).bindings.python.python }
+    if ($selectedBase -and (Test-Python311 $selectedBase)) { $basePython = $selectedBase }
+    else { throw '缺少基础 Python 解释器。请重新解压基础版／轻量版，或在组件管理中允许扫描并复用 Python 3.11。' }
+}
 if (-not $pythonForAudio) {
 if (-not (Test-Path -LiteralPath $venvPython) -and -not (Test-Python311 $basePython)) {
     $installedPython = Find-InstalledPython311

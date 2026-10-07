@@ -9,6 +9,7 @@ import {PassThrough} from 'node:stream';
 
 async function fixture(){
   const root=await mkdtemp(path.join(os.tmpdir(),'qwen-lyrics-test-')),directory=path.join(root,'runtime','lyrics-qwen');
+  await mkdir(path.join(root,'scripts'));await writeFile(path.join(root,'scripts/qwen-download-manifest.json'),JSON.stringify({asr:{folder:'Qwen3-ASR-0.6B'},aligner:{folder:'Qwen3-ForcedAligner-0.6B'}}));await mkdir(path.join(root,'.venv/Scripts'),{recursive:true});await writeFile(path.join(root,'.venv/Scripts/python.exe'),'');
   const marker={engine:'qwen3-asr',model:'Qwen3-ASR-0.6B',aligner:'Qwen3-ForcedAligner-0.6B',fingerprint:'f'.repeat(64)};
   await mkdir(path.join(directory,'dependencies','qwen_asr'),{recursive:true});await writeFile(path.join(directory,'dependencies','qwen_asr','__init__.py'),'');
   for(const name of [marker.model,marker.aligner]){await mkdir(path.join(directory,'models',name),{recursive:true});await writeFile(path.join(directory,'models',name,'config.json'),'{}');await writeFile(path.join(directory,'models',name,'model.safetensors'),'fixture');}

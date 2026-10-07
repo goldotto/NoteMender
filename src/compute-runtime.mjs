@@ -4,14 +4,17 @@ import os from 'node:os';
 import path from 'node:path';
 import {pythonFor} from './python-runtime.mjs';
 import {normalizeCompute} from '../public/compute-settings.mjs';
+import {componentBinding,audioRuntime} from './component-config.mjs';
 export function requestCompute(url){return normalizeCompute({mode:url.searchParams.get('compute'),device:url.searchParams.get('device')||'auto',threads:Number(url.searchParams.get('threads')||0)},os.availableParallelism());}
 export async function accelerationEnv(root,device='auto'){
-  let directory=null;
+  let directory=null,python=await pythonFor(root);
   for(const name of device==='cpu'?['cpu','gpu']:['gpu','cpu']){
+    const binding=await componentBinding(root,name);
+    if(binding?.python){directory=binding.directory;python=binding.python;break;}
     const candidate=path.join(root,'runtime','acceleration',name);
     try{await access(path.join(candidate,'ready.json'));await access(path.join(candidate,'onnxruntime','__init__.py'));if(name==='gpu')await access(path.join(candidate,'torch','__init__.py'));directory=candidate;break;}catch{}
   }
-  return {python:await pythonFor(root),directory,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:path.join(root,'runtime','models')}};
+  return {python,directory,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:(await audioRuntime(root)).modelHome}};
 }
 export async function modelFingerprint(root){
   const hash=createHash('sha256'),model=JSON.parse(await readFile(path.join(root,'public/models/basic-pitch/model.json'),'utf8'));

@@ -11,7 +11,7 @@ const files=JSON.parse(await readFile(path.join(root,'scripts/public-files.json'
 const excluded=new Set(['.git','runtime','exports','node_modules','.venv','__pycache__']);
 const prepared=[];
 for(const file of files){
- if(typeof file!=='string'||path.isAbsolute(file)||file.split(/[\\/]/).some(p=>p==='..'||excluded.has(p)||p.startsWith('.env')))throw Error('Invalid public file path');
+ if(typeof file!=='string'||path.isAbsolute(file)||excluded.has(file.split(/[\\/]/)[0])||file.split(/[\\/]/).some(p=>p==='..'||p==='__pycache__'||p.startsWith('.env')))throw Error('Invalid public file path');
  const source=path.resolve(root,file),dest=path.resolve(target,file);
  if(!inside(root,source)||!inside(target,dest)||(await lstat(source)).isSymbolicLink()||!inside(root,await realpath(source)))throw Error('Unsafe source path');
  prepared.push({source,dest});

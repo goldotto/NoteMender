@@ -62,7 +62,8 @@ def main(request):
     from qwen_asr import Qwen3ASRModel, Qwen3ForcedAligner
     import_seconds = time.perf_counter() - started
     directory = Path(request['directory'])
-    marker = json.loads((directory / 'ready.json').read_text(encoding='utf-8'))
+    marker = request.get('marker') or json.loads((directory / 'ready.json').read_text(encoding='utf-8'))
+    model_paths = request.get('modelPaths') or {'asr': str(directory / 'models' / marker['model']), 'aligner': str(directory / 'models' / marker['aligner'])}
     device = request['device']
     warnings, stages, devices = [], {'importSeconds': import_seconds}, set()
     if request.get('threads'):
@@ -102,10 +103,10 @@ def main(request):
             torch.cuda.empty_cache()
 
     def load_asr():
-        return Qwen3ASRModel.from_pretrained(str(directory / 'models' / marker['model']), dtype=torch.float32, device_map='cuda:0' if device == 'cuda' else 'cpu', attn_implementation='eager', local_files_only=True, max_inference_batch_size=1, max_new_tokens=512)
+        return Qwen3ASRModel.from_pretrained(model_paths['asr'], dtype=torch.float32, device_map='cuda:0' if device == 'cuda' else 'cpu', attn_implementation='eager', local_files_only=True, max_inference_batch_size=1, max_new_tokens=512)
 
     def load_aligner():
-        return Qwen3ForcedAligner.from_pretrained(str(directory / 'models' / marker['aligner']), dtype=torch.float32, device_map='cuda:0' if device == 'cuda' else 'cpu', attn_implementation='eager', local_files_only=True)
+        return Qwen3ForcedAligner.from_pretrained(model_paths['aligner'], dtype=torch.float32, device_map='cuda:0' if device == 'cuda' else 'cpu', attn_implementation='eager', local_files_only=True)
 
     def run_on_device(loader, work, phase):
         nonlocal device, model

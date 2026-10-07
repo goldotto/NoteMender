@@ -5,6 +5,7 @@ import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {pythonFor} from '../src/python-runtime.mjs';
 import {accelerationModelReady,accelerationReady,accelerationRepairPlan,ensurePip,missingPythonPackages,runProcess} from './install-runtime.mjs';
+import {sources} from './download-sources.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const gpu=process.argv.includes('--gpu');
@@ -52,7 +53,7 @@ if(repair.bootstrapPip)await ensurePip(python,{cwd:root,env});
 if(repair.installDependencies){
   const dependencies=repair.missingDependencies.map(name=>`${name}==${packageVersions[name]}`);
   let installed=false;
-  for(const index of ['https://pypi.tuna.tsinghua.edu.cn/simple','https://pypi.org/simple'])try{
+  for(const index of sources('pypi'))try{
     await run(python,['-m','pip','install','--upgrade','--no-deps','--target',directory,'--index-url',index,...dependencies]);
     installed=true;
     break;
@@ -62,17 +63,15 @@ if(repair.installDependencies){
 
 async function cudaWheel(packageName){
   const filename=packageName+'-2.7.1+cu128-cp311-cp311-win_amd64.whl';
-  const url='https://download.pytorch.org/whl/cu128/'+filename.replace('+','%2B');
+  const spec=JSON.parse(await readFile(path.join(root,'scripts','cuda-wheel-manifest.json'),'utf8'))[packageName];
+  const urls=[...sources('cuda').map(base=>base+filename.replace('+','%2B')),spec.official];
   const cache=path.join(root,'runtime/acceleration/downloads');
   await mkdir(cache,{recursive:true});
   const target=path.join(cache,filename),partial=target+'.part';
-  const response=await fetch(url,{method:'HEAD',signal:AbortSignal.timeout(30000)});
-  if(!response.ok)throw Error('官方 CUDA 组件下载不可用：'+response.status);
-  const expected=Number(response.headers.get('content-length'));
-  const sha=response.headers.get('x-amz-meta-checksum-sha256');
+  const sha=spec.sha256;
   async function valid(file){
     try{
-      if((await stat(file)).size!==expected)return false;
+      if((await stat(file)).size<100_000)return false;
       if(!sha)return false;
       const hash=createHash('sha256');
       for await(const chunk of createReadStream(file))hash.update(chunk);
@@ -80,11 +79,11 @@ async function cudaWheel(packageName){
     }catch{return false;}
   }
   if(await valid(target))return target;
-  for(let attempt=0;attempt<8;attempt++){
+  for(const url of [...new Set(urls)]){
     console.log('下载 '+packageName+' CUDA 组件（支持断点续传）…');
     try{await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','30','--speed-time','120','--speed-limit','1024','--output',partial,url]);}
     catch(error){console.error(error.message);continue;}
-    if(!await valid(partial))throw Error('CUDA 安装包校验失败，请移除对应 .part 文件后重试。');
+    if(!await valid(partial)){await unlink(partial).catch(()=>{});console.error('此下载源文件未通过官方 SHA-256 校验，切换下一源。');continue;}
     await rename(partial,target);
     return target;
   }
