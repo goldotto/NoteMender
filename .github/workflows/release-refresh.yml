@@ -1,0 +1,18 @@
+name: Refresh reviewed demo.7 asset
+on:
+  push:
+    branches: [demo7-asset-refresh-20261008]
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python .github/release-refresh.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
