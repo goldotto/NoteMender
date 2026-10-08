@@ -1,7 +1,7 @@
 // Pure UI construction. Existing element IDs remain the same for all editors.
 export function compactInspector(){
   const actions=document.querySelector('.score-toolbar>.actions'),view=document.createElement('div'),edit=document.createElement('div');view.className='score-view-tools';edit.className='score-edit-tools';
-  for(const node of [...actions.children]){if(node.tagName==='LABEL'||node.id==='marqueeMode')view.append(node);else edit.append(node);}actions.append(view,edit);
+  for(const node of [...actions.children]){if(node.tagName==='LABEL')view.append(node);else edit.append(node);}actions.append(view,edit);edit.prepend(document.getElementById('marqueeMode'));document.getElementById('marqueeMode').textContent='框选 · F';
   document.getElementById('selectionCount').title='普通点击单选；Ctrl 点击添加或取消；Shift 点击选择连续范围；空白处拖动框选';
   const extra=document.querySelector('.workspace-edit'),more=document.createElement('details');more.id='moreEditTools';more.className='more-edit-tools';more.innerHTML='<summary>更多编辑工具：批量输入 / 分小节 / 区块轨道</summary>';extra.before(more);more.append(extra);
   const root=document.getElementById('contextEditor'),single=document.getElementById('singleEditor'),batch=document.getElementById('batchEditor');

@@ -7,17 +7,31 @@ test('linked components support many-to-many and moving from either side preserv
  const r=retimeAssociated(p,{kind:'note',id:'a',start:2,end:3});assert.deepEqual(r.project.notes.map(n=>n.start),[2,3,10]);assert.deepEqual(r.project.lyrics.map(t=>[t.start,t.end]),[[2,4],[3,3.5],[10,11]]);assert.deepEqual(r.project.lyrics.map(t=>t.noteIds),p.lyrics.map(t=>t.noteIds));assert.deepEqual(p,original);
  const back=retimeAssociated(r.project,{kind:'lyric',id:'hold',start:1,end:3});assert.deepEqual(back.project.notes.map(n=>[n.start,n.duration]),p.notes.map(n=>[n.start,n.duration]));
 });
-test('stretching a word scales every associated note and connected word; outside data remains unchanged',()=>{
- const p=fixture(),r=retimeAssociated(p,{kind:'lyric',id:'hold',start:1,end:5});assert.deepEqual(r.project.notes.slice(0,2).map(n=>[n.start,n.duration]),[[1,2],[3,2]]);assert.deepEqual([r.project.lyrics[1].start,r.project.lyrics[1].end],[3,4]);assert.deepEqual(r.project.notes[2],p.notes[2]);assert.deepEqual(r.project.lyrics[2],p.lyrics[2]);
+test('linked movement never stretches notes or words, including misaligned lyric boundaries',()=>{
+ const p=fixture();p.lyrics[0].start=1.15;p.lyrics[0].end=2.8;
+ const r=retimeAssociated(p,{kind:'note',id:'a',start:2,end:4});assert.deepEqual(r.project.notes.slice(0,2).map(n=>[n.start,n.duration]),[[2,1],[3,1]]);assert.deepEqual([r.project.lyrics[0].start,r.project.lyrics[0].end],[2.15,3.8]);assert.deepEqual(r.project.notes[2],p.notes[2]);assert.deepEqual(r.project.lyrics[2],p.lyrics[2]);
 });
 test('seconds shifts use the original map and conflicting groups are rejected atomically',()=>{
  const p=fixture();p.timeAnchors=[{beat:0,second:0},{beat:3,second:1.5},{beat:12,second:10.5}];p.lyrics=p.lyrics.map(t=>({...t,start:timeAtBeat(p,t.start),end:timeAtBeat(p,t.end)}));
  const r=moveAssociatedLyrics(p,['hold','extra'],.5);assert.equal(r.project.lyrics[0].start,p.lyrics[0].start+.5);assert.equal(r.project.lyrics[1].start,p.lyrics[1].start+.5);assert.equal(r.project.notes[0].start,2);assert.deepEqual(r.project.lyrics[0].noteIds,['a','b']);
- assert.throws(()=>retimeAssociated(fixture(),{kind:'note',id:'a',start:9,end:10}),/重叠/);assert.throws(()=>retimeAssociated(fixture(),{kind:'lyric',id:'hold',start:-1,end:1}),/未修改/);assert.throws(()=>retimeAssociated(fixture(),{kind:'lyric',id:'hold',start:1,end:1.01}),/时值|过短/);
+ assert.throws(()=>retimeAssociated(fixture(),{kind:'note',id:'a',start:9,end:10}),/重叠/);assert.throws(()=>retimeAssociated(fixture(),{kind:'lyric',id:'hold',start:-1,end:1}),/未修改/);
 });
 test('legacy note text becomes a timed associated token without changing unrelated legacy text',()=>{
  const p=validateProject({version:1,bpm:60,key:0,notes:[{id:'old',start:1,duration:1,midi:60,lyric:'旧'},{id:'other',start:6,duration:1,midi:62,lyric:'外'}]});
  const r=retimeAssociated(p,{kind:'note',id:'old',start:2,end:4}).project;
  assert.equal(r.notes[0].lyric,'');assert.equal(r.notes[1].lyric,'外');
- assert.deepEqual(r.lyrics.map(t=>[t.text,t.start,t.end,t.noteIds]),[['旧',2,4,['old']]]);
+ assert.deepEqual(r.lyrics.map(t=>[t.text,t.start,t.end,t.noteIds]),[['旧',2,3,['old']]]);
+});
+test('moving across a non-linear map preserves lyric seconds duration and note beat duration',()=>{
+ const p=fixture();p.timeAnchors=[{beat:0,second:0},{beat:3,second:1.5},{beat:12,second:10.5}];
+ const r=retimeAssociated(p,{kind:'note',id:'a',start:2,end:3}).project;
+ assert.deepEqual(r.notes.map(n=>n.duration),p.notes.map(n=>n.duration));
+ assert.deepEqual(r.lyrics.map(t=>t.end-t.start),p.lyrics.map(t=>t.end-t.start));
+ assert.equal(r.lyrics[0].start-p.lyrics[0].start,.5);
+});
+test('an existing quantized tail may move inward but cannot move farther past audio',()=>{
+ const p=validateProject({version:1,bpm:60,key:0,notes:[{id:'tail',start:9,duration:1.0625,midi:60}],lyrics:[{id:'word',text:'尾',start:9,end:10,noteIds:['tail']}]});
+ const r=retimeAssociated(p,{kind:'note',id:'tail',start:8.9375,end:10,maxSeconds:10}).project;
+ assert.equal(r.notes[0].duration,1.0625);assert.equal(r.notes[0].start,8.9375);
+ assert.throws(()=>retimeAssociated(p,{kind:'note',id:'tail',start:9.0625,end:10.125,maxSeconds:10}),/超出原音/);
 });
