@@ -14,7 +14,7 @@ export function associatedGroup(project,{noteIds=[],lyricIds=[]}={}){
   }
   return {noteIds:ns,lyricIds:ls,notes:[...ns].map(id=>notes.get(id)),lyrics:[...ls].map(id=>lyrics.get(id))};
 }
-function transformGroup(project,group,map,{maxSeconds=3600,seconds=0}={}){
+function transformGroup(project,group,map,{maxSeconds=3600,seconds=0,validate=true}={}){
   const notes=project.notes.map(n=>{
     if(!group.noteIds.has(n.id))return n;
     const start=snap(map(n.start),EDIT_STEP),end=start+n.duration;
@@ -32,10 +32,10 @@ function transformGroup(project,group,map,{maxSeconds=3600,seconds=0}={}){
   }));
   const lyrics=(project.lyrics||[]).map(t=>updates.get(t.id)||t),existing=new Set(lyrics.map(t=>t.id));
   for(const [id,t] of updates)if(!existing.has(id))lyrics.push(t);
-  try{return validateProject({...project,notes,lyrics});}
+  try{return validate?validateProject({...project,notes,lyrics}):{...project,notes,lyrics};}
   catch(error){throw Error('联动编辑未应用：'+error.message);}
 }
-export function retimeAssociated(project,{kind,id,start,end,group=null,maxSeconds=3600}){
+export function retimeAssociated(project,{kind,id,start,end,group=null,maxSeconds=3600,validate=true}){
   if(!Number.isFinite(start)||!Number.isFinite(end)||end<=start)throw Error('请输入有效的联动起止拍位。');
   group ||= associatedGroup(project,kind==='note'?{noteIds:[id]}:{lyricIds:[id]});
   const source=kind==='note'?project.notes.find(n=>n.id===id):group.lyrics.find(t=>t.id===id);
@@ -44,7 +44,7 @@ export function retimeAssociated(project,{kind,id,start,end,group=null,maxSecond
   if(!Number.isFinite(from)||!Number.isFinite(to)||to<=from)throw Error('请先给文字定位。');
   const seconds=timeAtBeat(project,start)-timeAtBeat(project,from);
   const map=kind==='note'?beat=>beat+start-from:beat=>beatAtTime(project,timeAtBeat(project,beat)+seconds);
-  return {project:transformGroup(project,group,map,{maxSeconds,seconds}),group};
+  return {project:transformGroup(project,group,map,{maxSeconds,seconds,validate}),group};
 }
 export function moveAssociatedLyrics(project,ids,seconds,{maxSeconds=3600}={}){
   if(!Number.isFinite(seconds))throw Error('请输入有效移动秒数。');

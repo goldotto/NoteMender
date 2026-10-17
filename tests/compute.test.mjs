@@ -141,5 +141,5 @@ test('compute API authenticates, rejects malformed input, and reports unavailabl
     assert.equal((await fetch(base+'/api/analysis/basic-pitch?compute=performance',{method:'POST',headers,body:Buffer.alloc(3)})).status,400);
     assert.equal((await fetch(base+'/api/analysis/basic-pitch?compute=performance&threads=-1',{method:'POST',headers,body:Buffer.alloc(4)})).status,400);
     assert.equal((await fetch(base+'/api/analysis/basic-pitch?compute=performance',{method:'POST',headers,body:Buffer.alloc(4)})).status,400);
-  }finally{await new Promise(resolve=>app.close(resolve));await rm(root,{recursive:true,force:true});}
+  }finally{await new Promise(resolve=>app.close(resolve));await app.diagnostics.close();await rm(root,{recursive:true,force:true});}
 });

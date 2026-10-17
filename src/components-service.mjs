@@ -3,7 +3,7 @@ import {access,mkdir,readFile,readdir,statfs,writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {COMPONENTS,orderedComponents,DOWNLOAD_SOURCES} from '../public/component-catalog.mjs';
-import {componentConfig,saveComponentConfig} from './component-config.mjs';
+import {componentConfig,saveComponentConfig,audioRuntime} from './component-config.mjs';
 import {componentLocation,inspectComponent,discoverPython,knownModelHomes,knownQwenPaths} from './component-discovery.mjs';
 import {terminateProcess} from './process-control.mjs';
 import {pythonFor} from './python-runtime.mjs';
@@ -14,7 +14,8 @@ export async function installerRuntime(root,id){
   const bundled=path.join(root,'runtime','python','Lib','ensurepip','_bundled');
   let pip=null;try{pip=(await readdir(bundled)).find(name=>/^pip-.*\.whl$/.test(name));}catch{}
   const local=path.resolve(runtime.python).toLowerCase().startsWith(path.resolve(root).toLowerCase()+path.sep);
-  return {...runtime,env:{...runtime.env,NOTEMENDER_INSTALL_PYTHON:runtime.python,NOTEMENDER_READONLY_PYTHON:local?'0':'1',PYTHONPATH:[pip?path.join(bundled,pip):null,runtime.env.PYTHONPATH].filter(Boolean).join(path.delimiter),PYTHONNOUSERSITE:'1',PYTHONDONTWRITEBYTECODE:'1'}};
+  const audio=await audioRuntime(root);
+  return {...runtime,env:{...runtime.env,NOTEMENDER_REUSE_MODEL_HOME:audio.modelHome,NOTEMENDER_INSTALL_PYTHON:runtime.python,NOTEMENDER_READONLY_PYTHON:local?'0':'1',PYTHONPATH:[pip?path.join(bundled,pip):null,runtime.env.PYTHONPATH].filter(Boolean).join(path.delimiter),PYTHONNOUSERSITE:'1',PYTHONDONTWRITEBYTECODE:'1'}};
 }
 
 export function installerCommand(root,id,node=process.execPath){
@@ -23,7 +24,7 @@ export function installerCommand(root,id,node=process.execPath){
   if(!Object.hasOwn(commands,id))throw Error('不支持的组件');return commands[id];
 }
 async function has(file){try{await access(file);return true;}catch{return false;}}
-export function componentsService(root,{canStart=()=>true,beforeStart=async()=>{},spawnImpl=spawn,inspect=inspectComponent,discover=discoverPython,location=componentLocation}={}){
+export function componentsService(root,{record=()=>{},canStart=()=>true,beforeStart=async()=>{},spawnImpl=spawn,inspect=inspectComponent,discover=discoverPython,location=componentLocation}={}){
   let current=null,controller=null,child=null,cached=null,cacheTime=0,pending=null;const candidates=new Map();
   async function status(refresh=false){
     if(!refresh&&cached&&Date.now()-cacheTime<180000)return {...cached,job:current};
@@ -32,11 +33,13 @@ export function componentsService(root,{canStart=()=>true,beforeStart=async()=>{
     pending=(async()=>{
       const components=[];
       for(const item of COMPONENTS){
+        const checkStarted=Date.now();record({source:'components',event:'check.start',component:item.id});
         let result=item.id==='base'?{ready:true}:null,where;
         if(!result){where=await location(root,item.id);const missing=(!where.external&&['gpu','cpu','lyrics','singing'].includes(item.id)&&!await has(path.join(where.directory,'ready.json')));
           result=missing?{ready:false,reason:'组件尚未安装'}:await inspect(root,item.id,where);
         }
-        components.push({...item,...result,external:Boolean(where?.external),location:where?.external?where.directory||where.python:null});
+        components.push({...item,...result,external:Boolean(where?.external),sharedWith:where?.sharedWith||null,location:where?.external?where.directory||where.python:null});
+        record({source:'components',event:'check.complete',component:item.id,state:result.ready?'ready':'missing',elapsedMs:Date.now()-checkStarted,message:result.reason});
       }
       let freeBytes=null;try{const info=await statfs(root);freeBytes=Number(info.bavail)*Number(info.bsize);}catch{}
       cached={components,freeBytes,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES};cacheTime=Date.now();return {...cached,job:current};
@@ -45,11 +48,12 @@ export function componentsService(root,{canStart=()=>true,beforeStart=async()=>{
   function start(kind,work){
     if(current&&['running','cancelling'].includes(current.state)||pending||!canStart())throw Error('请等待当前分析、检查或组件任务结束');
     controller=new AbortController();current={id:randomUUID(),kind,state:'running',progress:0,stage:'准备',logs:[],candidates:[]};const job=current,signal=controller.signal;
+    const started=Date.now();record({source:'components',event:'task.start',operation:kind});
     // Reserve the task before returning. All stages run sequentially.
-    Promise.resolve().then(async()=>{await beforeStart();signal.throwIfAborted();await work(job,signal);signal.throwIfAborted();job.state='done';job.progress=1;job.stage='完成';}).catch(error=>{job.state=signal.aborted?'cancelled':'failed';job.stage=signal.aborted?'已取消':error.message;}).finally(()=>{child=null;cached=null;cacheTime=0;controller=null;});
+    Promise.resolve().then(async()=>{await beforeStart();signal.throwIfAborted();await work(job,signal);signal.throwIfAborted();job.state='done';job.progress=1;job.stage='完成';}).catch(error=>{job.state=signal.aborted?'cancelled':'failed';job.stage=signal.aborted?'已取消':'任务失败：展开安装详情查看原因，可重试';if(!signal.aborted){job.error=error.message;log(job,error.message);record({source:'components',event:'task.error',operation:kind,component:job.component,level:'error',message:error.message,stack:error.stack});}}).finally(()=>{record({source:'components',event:'task.complete',operation:kind,component:job.component,state:job.state,elapsedMs:Date.now()-started});child=null;cached=null;cacheTime=0;controller=null;});
     return {...job};
   }
-  function log(job,value){const text=String(value).replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);}}
+  function log(job,value){const text=String(value).replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);record({source:'components',event:'installer.output',component:job.component,message:text});}}
   async function execute(job,id,signal,region){
     const [command,args]=installerCommand(root,id);signal.throwIfAborted();
     const runtime=await installerRuntime(root,id);

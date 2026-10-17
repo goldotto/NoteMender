@@ -14,6 +14,7 @@ export function orderedComponents(ids){
   ids.forEach(add);return [...selected];
 }
 export const DOWNLOAD_SOURCES={
+  basic:['https://cdn.jsdelivr.net/gh/spotify/basic-pitch@main/basic_pitch/saved_models/icassp_2022/nmp.onnx','https://fastly.jsdelivr.net/gh/spotify/basic-pitch@main/basic_pitch/saved_models/icassp_2022/nmp.onnx','https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx'],
   pypi:['https://pypi.tuna.tsinghua.edu.cn/simple','https://mirrors.aliyun.com/pypi/simple/','https://pypi.org/simple'],
   cuda:['https://mirror.sjtu.edu.cn/pytorch-wheels/cu128/','https://download.pytorch.org/whl/cu128/'],
   qwen:['https://modelscope.cn','https://hf-mirror.com','https://huggingface.co'],

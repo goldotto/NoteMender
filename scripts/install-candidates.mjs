@@ -1,4 +1,5 @@
 import {createHash} from 'node:crypto';
+import {ensurePinnedFile,modelReuseCandidates} from './download-model.mjs';
 import {createReadStream} from 'node:fs';
 import {mkdir,readFile,writeFile,access,stat,unlink,readdir} from 'node:fs/promises';
 import path from 'node:path';
@@ -133,15 +134,8 @@ if(process.argv.includes('--six')||!process.argv.includes('--singing')){
   else{
     const spec=JSON.parse(await readFile(path.join(root,'scripts/component-models.json'),'utf8')).six;
     const checkpoint=path.join(root,'runtime/models/hub/checkpoints',spec.file);await mkdir(path.dirname(checkpoint),{recursive:true});
-    if(!await fileWithDigest(path.dirname(checkpoint),spec.file,spec.sha256,{minimumBytes:spec.size})){
-      let complete=false;const domestic='https://hf-mirror.com/lainlives/audio-separator-models/resolve/main/'+spec.file,official='https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/'+spec.file;
-      for(const url of process.env.NOTEMENDER_DOWNLOAD_REGION==='global'?[official,domestic]:[domestic,official])try{
-        await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','20','--speed-time','60','--speed-limit','1024','--output',checkpoint+'.part',url]);
-        if(!await fileWithDigest(path.dirname(checkpoint),spec.file+'.part',spec.sha256,{minimumBytes:spec.size})){await unlink(checkpoint+'.part').catch(()=>{});throw Error('六轨模型 SHA-256 校验失败');}
-        await run(python,['-c','from pathlib import Path; import sys; Path(sys.argv[1]).replace(sys.argv[2])',checkpoint+'.part',checkpoint]);complete=true;break;
-      }catch(error){console.error(error.message);}
-      if(!complete)throw Error('六轨模型下载未完成，可在组件管理重试。');
-    }
+    const domestic='https://hf-mirror.com/lainlives/audio-separator-models/resolve/main/'+spec.file,official='https://dl.fbaipublicfiles.com/demucs/hybrid_transformer/'+spec.file;
+    await ensurePinnedFile({target:checkpoint,spec,candidates:await modelReuseCandidates(root,'hub/checkpoints/'+spec.file),urls:process.env.NOTEMENDER_DOWNLOAD_REGION==='global'?[official,domestic]:[domestic,official],cwd:root,env});
     await run(python,[path.join(root,'scripts/separate.py'),'--prepare'],{JIANPU_SEPARATION_MODEL:'htdemucs_6s'});
   }
 }

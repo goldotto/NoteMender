@@ -185,16 +185,28 @@ def download_model(spec, destination, manifest=None):
             finished += size
             continue
         partial = file.with_name(file.name + '.part')
+        if partial.exists() and partial.stat().st_size == size and digest(partial) == expected_sha:
+            partial.replace(file)
+            finished += size
+            continue
         complete = False
         for url in model_urls({**manifest, **spec}, name):
             print('尝试下载源：' + url.split('/')[2], flush=True)
             try:
                 import time
-                process = subprocess.Popen(['curl.exe', '--silent', '--show-error', '--fail', '--location', '--continue-at', '-', '--retry', '1', '--connect-timeout', '20', '--speed-time', '60', '--speed-limit', '1024', '--output', str(partial), url])
+                args = ['curl.exe', '--silent', '--show-error', '--fail', '--location', '--retry', '1', '--connect-timeout', '20', '--speed-time', '60', '--speed-limit', '1024', '--output', str(partial)]
+                process = subprocess.Popen([*args, '--continue-at', '-', url])
                 while process.poll() is None:
                     amount = partial.stat().st_size if partial.exists() else 0
                     print(json.dumps({'stage': '下载 ' + spec['folder'] + ' · ' + name, 'progress': min(1, (finished + amount) / total)}, ensure_ascii=False), flush=True)
                     time.sleep(1)
+                if process.returncode == 33:
+                    # This mirror does not support HTTP ranges; retry the file once.
+                    process = subprocess.Popen([*args, url])
+                    while process.poll() is None:
+                        amount = partial.stat().st_size if partial.exists() else 0
+                        print(json.dumps({'stage': '下载 ' + spec['folder'] + ' · ' + name, 'progress': min(1, (finished + amount) / total)}, ensure_ascii=False), flush=True)
+                        time.sleep(1)
                 if process.returncode:
                     raise subprocess.CalledProcessError(process.returncode, process.args)
                 if partial.stat().st_size != size or digest(partial) != expected_sha:

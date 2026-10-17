@@ -9,7 +9,7 @@ import {EVIDENCE_VERSION} from '../public/recognition-evidence.mjs';
 test('evidence cache and audit persist across server restarts, authenticate and constrain keys',async()=>{
   const root=await mkdtemp(path.join(tmpdir(),'jianpu-analysis-test-'));
   let auditId;
-  async function serve(fn){const app=createApp({analysisRoot:root});await new Promise(r=>app.listen(0,'127.0.0.1',r));try{const base=`http://127.0.0.1:${app.address().port}`,{token}=await(await fetch(base+'/api/status')).json();await fn(base,{'X-Studio-Token':token,'Content-Type':'application/json'});}finally{await new Promise(r=>app.close(r));}}
+  async function serve(fn){const app=createApp({analysisRoot:root});await new Promise(r=>app.listen(0,'127.0.0.1',r));try{const base=`http://127.0.0.1:${app.address().port}`,{token}=await(await fetch(base+'/api/status')).json();await fn(base,{'X-Studio-Token':token,'Content-Type':'application/json'});}finally{await new Promise(r=>app.close(r));await app.diagnostics.close();}}
   const value={version:EVIDENCE_VERSION,rawBasic:[{start:0,end:.05,midi:60}],pitchFrames:[]},key='a'.repeat(64);
   try{
     await serve(async(base,headers)=>{

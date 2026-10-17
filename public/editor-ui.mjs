@@ -1,13 +1,13 @@
 // Pure UI construction. Existing element IDs remain the same for all editors.
 export function compactInspector(){
   const actions=document.querySelector('.score-toolbar>.actions'),view=document.createElement('div'),edit=document.createElement('div');view.className='score-view-tools';edit.className='score-edit-tools';
-  for(const node of [...actions.children]){if(node.tagName==='LABEL')view.append(node);else edit.append(node);}actions.append(view,edit);edit.prepend(document.getElementById('marqueeMode'));document.getElementById('marqueeMode').textContent='框选 · F';
-  document.getElementById('selectionCount').title='普通点击单选；Ctrl 点击添加或取消；Shift 点击选择连续范围；空白处拖动框选';
-  const extra=document.querySelector('.workspace-edit'),more=document.createElement('details');more.id='moreEditTools';more.className='more-edit-tools';more.innerHTML='<summary>更多编辑工具：批量输入 / 分小节 / 区块轨道</summary>';extra.before(more);more.append(extra);
-  const root=document.getElementById('contextEditor'),single=document.getElementById('singleEditor'),batch=document.getElementById('batchEditor');
+  for(const node of [...actions.children]){if(node.id==='cursorBeatPosition')document.querySelector('.music-controls').append(node);else if(node.tagName==='LABEL')view.append(node);else edit.append(node);}actions.append(view,edit);
+  document.getElementById('selectionCount').title='普通点击单选；Ctrl 点击添加或取消；Shift 点击选择连续范围；开启框选后拖动选择音符与歌词；拖动已选块可整组移动';
+  const extra=document.querySelector('.workspace-edit'),more=document.createElement('details');more.id='moreEditTools';more.className='more-edit-tools';more.innerHTML='<summary>更多编辑工具：分小节 / 区块轨道</summary>';document.querySelector('.score-panel').after(more);more.append(extra);
+  const root=document.getElementById('contextEditor');root.insertAdjacentHTML('afterbegin','<section id="mixedClipboardOptions" hidden><strong>音符与歌词一起粘贴</strong><label class="checkbox"><input id="mixedOverwrite" type="checkbox">覆盖目标音符与歌词（可撤销）</label></section>');const single=document.getElementById('singleEditor'),batch=document.getElementById('batchEditor');
   const title=document.getElementById('title').closest('label');title.classList.add('project-title-field');root.closest('aside').prepend(title);
   root.prepend(batch);root.prepend(single);
-  const timing=root.querySelector('.timing-tools'),details=document.createElement('details');details.className='timing-disclosure';details.innerHTML='<summary>时值检查与批量处理</summary>';root.prepend(details);details.append(timing);
+  const timing=root.querySelector('.timing-tools'),details=document.createElement('details');details.className='timing-disclosure';details.innerHTML='<summary>时值检查与批量处理</summary>';root.prepend(details);details.append(timing);details.insertAdjacentHTML('afterend','<section id="mixedSelectionTools" hidden><strong>音符与歌词混合选择</strong><p id="mixedSelectionSummary" class="hint"></p><div class="stepper"><button id="mixedCopy">复制所选</button><button id="mixedDelete">删除所选</button></div><button id="mixedLyrics" class="wide">编辑所选歌词</button></section>');
   [...timing.querySelectorAll('.hint')].at(-1).textContent='这里只按时长筛选。可连续查找、全选结果后编辑，或主动合并相邻同音短片段；长音可在播放处切开。';
   timing.insertAdjacentHTML('beforeend','<button id="durationSelectAll" class="wide">选择全部符合条件的音符</button><p id="durationMergeSummary" class="hint"></p><button id="durationMergeShort" class="wide">合并相邻同音短片段</button>');
   const insert=root.querySelector('.insert-tool'),insertDetails=document.createElement('details');insertDetails.id='insertDisclosure';insertDetails.className='insert-disclosure';insertDetails.innerHTML='<summary>插入新音符</summary>';insert.before(insertDetails);insertDetails.append(insert);insert.querySelector('strong').hidden=true;

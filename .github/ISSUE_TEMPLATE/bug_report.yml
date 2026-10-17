@@ -20,6 +20,11 @@ body:
       label: 识别问题（可选）
       description: 请注明出错秒数、所选音轨与识别方案；也欢迎反馈人工修改不便之处。
   - type: textarea
+    id: diagnostic_report
+    attributes:
+      label: 反馈报告（可选）
+      description: 在程序顶部“问题反馈”生成报告，检查预览后下载 TXT，并拖到此处附上。
+  - type: textarea
     id: attachment
     attributes:
       label: 最小复现素材（可选）

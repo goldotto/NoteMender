@@ -15,21 +15,27 @@ import {audioResourceService} from './src/audio-resources.mjs';
 import {singingService} from './src/singing-service.mjs';
 import {computeService} from './src/compute-service.mjs';
 import {componentsService} from './src/components-service.mjs';
+import {createDiagnostics,diagnosticsService,diagnosticRoute} from './src/diagnostics.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const INSTANCE=createHash('sha256').update(path.resolve(ROOT).toLowerCase()).digest('hex').slice(0,16);
 const MIME={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json','.txt':'text/plain; charset=utf-8','.bin':'application/octet-stream','.wasm':'application/wasm','.wav':'audio/wav','.svg':'image/svg+xml'};
 export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugins'),analysisRoot=ROOT,exportDirectory=path.join(ROOT,'exports')}={}) {
+  const logger=createDiagnostics(analysisRoot),diagnostics=diagnosticsService(logger);
   let decoding=false,components;const token=randomBytes(24).toString('hex'),compute=computeService(analysisRoot,{canStart:()=>!components?.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()}),separation=separationService(analysisRoot,{beforeStart:async()=>{if(components?.busy()||compute.busy()||compute.runner.pending||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前片段分析或组件任务完成');await compute.close();}}),analysis=analysisService(analysisRoot,{nativeRunner:compute.runner,canStart:()=>!components?.busy()&&!compute.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()}),resources=audioResourceService(analysisRoot),singing=singingService(analysisRoot,{beforeStart:async()=>{if(components?.busy()||compute.busy()||compute.runner.pending||separation.busy()||lyrics.busy()||analysis.busy())throw Error('已有分析或组件任务运行中');await compute.close();}});
   const lyrics=lyricsService(analysisRoot,{canStart:()=>!components?.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!analysis.busy(),beforeStart:()=>compute.close()});
-  components=componentsService(analysisRoot,{canStart:()=>!decoding&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),beforeStart:async()=>{compute.invalidate();await compute.close();}});
+  components=componentsService(analysisRoot,{record:logger.record,canStart:()=>!decoding&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),beforeStart:async()=>{compute.invalidate();await compute.close();}});
   const app=http.createServer(async(req,res)=>{
-    const send=(status,body,type='application/json; charset=utf-8')=>{res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(typeof body==='string'||Buffer.isBuffer(body)?body:JSON.stringify(body));};
+    const started=Date.now(),route=diagnosticRoute(req.url),diagnosticRequest=route.startsWith('/api/diagnostics/');let failure;
+    res.once('finish',()=>{if(!diagnosticRequest&&route.startsWith('/api/')&&(res.statusCode>=400||req.method==='POST'))logger.record({event:'request.complete',level:res.statusCode>=400?'error':'info',method:req.method,status:res.statusCode,elapsedMs:Date.now()-started,message:route+(failure?' · '+failure:'')});});
+    res.once('close',()=>{if(!res.writableEnded&&!diagnosticRequest&&route.startsWith('/api/'))logger.record({event:'request.interrupted',level:'warn',method:req.method,elapsedMs:Date.now()-started,message:route});});
+    const send=(status,body,type='application/json; charset=utf-8')=>{if(status>=400&&body?.error)failure=body.error;const job=body?.job||body;if(!diagnosticRequest&&job?.state==='failed')logger.record({event:'task.failed',level:'error',message:route+' · '+(job.error||'任务失败')});res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(typeof body==='string'||Buffer.isBuffer(body)?body:JSON.stringify(body));};
     try {
       const host=req.headers.host||'';
       if(!/^127\.0\.0\.1:\d+$/.test(host)&&!/^localhost:\d+$/.test(host))return send(403,{error:'仅允许本机访问'});
       const url=new URL(req.url,`http://${host}`),origin=req.headers.origin;
       if(origin&&origin!==`http://${host}`)return send(403,{error:'不允许跨站请求'});
+      if(await diagnostics(req,res,url,send,token))return;
       if(await components(req,res,url,send,token))return;
       if(await lyrics(req,res,url,send,token))return;
       if(await resources(req,res,url,send,token))return;
@@ -90,14 +96,15 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       if(!filename.startsWith(base+path.sep))return send(403,{error:'路径不允许'});
       if(!(await stat(filename)).isFile())return send(404,{error:'文件不存在'});
       const content=await readFile(filename);send(200,req.method==='HEAD'?'':content,MIME[path.extname(filename)]||'application/octet-stream');
-    }catch(e){if(!res.headersSent)send(e.code==='ENOENT'?404:400,{error:e.code==='ENOENT'?'文件不存在':'请求无法处理'});else res.end();}
+    }catch(e){if(!diagnosticRequest)logger.record({event:'request.exception',level:'error',message:e.message,stack:e.stack});if(!res.headersSent)send(e.code==='ENOENT'?404:400,{error:e.code==='ENOENT'?'文件不存在':'请求无法处理'});else res.end();}
   });
-  app.stopAnalysis=()=>{components.close();compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>app.stopAnalysis());return app;
+  app.diagnostics=logger;app.stopAnalysis=()=>{components.close();compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>{app.stopAnalysis();logger.record({event:'service.stop'});});return app;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT||4317),app=createApp();
   const openBrowser=()=>{if(process.argv.includes('--open')&&process.platform==='win32')spawn('powershell.exe',['-NoProfile','-Command',`Start-Process 'http://127.0.0.1:${port}'`],{windowsHide:true,stdio:'ignore'});};
-  const shutdown=()=>{app.stopAnalysis();app.closeAllConnections();app.close(()=>process.exit(0));};process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);process.once('exit',()=>app.stopAnalysis());
+  process.on('uncaughtExceptionMonitor',error=>{app.diagnostics.record({event:'process.exception',level:'error',message:error.message,stack:error.stack});});
+  const shutdown=()=>{app.stopAnalysis();app.closeAllConnections();app.close(async()=>{await app.diagnostics.close();process.exit(0);});};process.once('SIGINT',shutdown);process.once('SIGTERM',shutdown);process.once('exit',()=>app.stopAnalysis());
   app.listen(port,'127.0.0.1',()=>{console.log(`听谱 NoteMender → http://127.0.0.1:${port}\n关闭此窗口可停止服务。`);openBrowser();});
   app.on('error',e=>{console.error(e.code==='EADDRINUSE'?`端口 ${port} 已占用。若已启动，直接打开 http://127.0.0.1:${port}；否则设置 PORT 换端口。`:e.message);if(e.code==='EADDRINUSE')openBrowser();process.exitCode=1;});
 }

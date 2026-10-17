@@ -12,6 +12,37 @@ SPEC.loader.exec_module(INSTALLER)
 
 
 class ComponentDownloadTests(unittest.TestCase):
+    def test_complete_partial_is_promoted_without_network(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            content = b'complete-partial'
+            (base / 'model.safetensors.part').write_bytes(content)
+            spec = {'repo': 'Qwen/test', 'folder': 'test', 'revision': 'fixed'}
+            manifest = {**spec, 'files': [{'path': 'model.safetensors', 'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()}]}
+            with patch.object(INSTALLER.subprocess, 'Popen') as process:
+                INSTALLER.download_model(spec, base, manifest)
+                process.assert_not_called()
+            self.assertEqual((base / 'model.safetensors').read_bytes(), content)
+
+    def test_unsupported_ranges_retry_the_same_source_without_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            content = b'correct-model'
+            spec = {'repo': 'Qwen/test', 'folder': 'test', 'revision': 'fixed'}
+            manifest = {**spec, 'files': [{'path': 'model.safetensors', 'size': len(content), 'sha256': hashlib.sha256(content).hexdigest()}]}
+            calls = []
+            def start(args):
+                calls.append(args)
+                status = 33 if len(calls) == 1 else 0
+                if not status:
+                    Path(args[args.index('--output') + 1]).write_bytes(content)
+                return SimpleNamespace(returncode=status, args=args, poll=lambda: status)
+            with patch.object(INSTALLER, 'model_urls', return_value=['https://one']), patch.object(INSTALLER.subprocess, 'Popen', side_effect=start):
+                INSTALLER.download_model(spec, base, manifest)
+            self.assertEqual(len(calls), 2)
+            self.assertIn('--continue-at', calls[0])
+            self.assertNotIn('--continue-at', calls[1])
+
     def test_hubs_use_their_own_pinned_revision(self):
         spec = {'repo': 'Qwen/test', 'revision': 'modelscope-fixed', 'hfRevision': 'hf-fixed'}
         urls = INSTALLER.model_urls(spec, 'model.safetensors')

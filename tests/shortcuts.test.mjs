@@ -13,6 +13,11 @@ test('switch, text entry, dialogs and IME keep editing keys from running',()=>{
  assert.equal(shortcutAction(key('c',{ctrlKey:true,shiftKey:true})),null);
 });
 test('holding a key cannot repeat cut, merge, save or toggle; arrow and duration adjustment may repeat',()=>{
- for(const e of [key('s'),key('m'),key('l'),key('Delete'),key('s',{ctrlKey:true}),key(' '),key('k',{ctrlKey:true,altKey:true})])assert.equal(shortcutAction({...e,repeat:true}),null);
+ for(const e of [key('f'),key('s'),key('m'),key('l'),key('Delete'),key('s',{ctrlKey:true}),key(' '),key('k',{ctrlKey:true,altKey:true})])assert.equal(shortcutAction({...e,repeat:true}),null);
  assert.equal(shortcutAction(key('ArrowUp',{repeat:true})),'up');assert.equal(shortcutAction(key(']',{repeat:true})),'longer');
+});
+test('marquee shortcut works for lyrics too and respects shortcut disable and text entry',()=>{
+ assert.equal(shortcutAction(key('f')),'marquee');assert.equal(shortcutAction(key('F')),'marquee');
+ for(const context of [{enabled:false},{editing:true},{dialog:true},{busy:true}])assert.equal(shortcutAction(key('f'),context),null);
+ assert.ok(SHORTCUTS.some(row=>row[1]==='F'&&row[2].includes('框选')));
 });

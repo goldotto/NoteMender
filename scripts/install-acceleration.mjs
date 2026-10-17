@@ -1,11 +1,11 @@
-import {mkdir,readFile,rename,stat,unlink,writeFile} from 'node:fs/promises';
-import {createReadStream} from 'node:fs';
+import {mkdir,readFile,unlink,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
 import {createHash} from 'node:crypto';
 import {pythonFor} from '../src/python-runtime.mjs';
 import {accelerationModelReady,accelerationReady,accelerationRepairPlan,ensurePip,fileWithDigest,missingPythonPackages,runProcess} from './install-runtime.mjs';
 import {sources} from './download-sources.mjs';
+import {ensurePinnedFile,modelReuseCandidates} from './download-model.mjs';
 
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
 const gpu=process.argv.includes('--gpu');
@@ -68,28 +68,7 @@ async function cudaWheel(packageName){
   const spec=JSON.parse(await readFile(path.join(root,'scripts','cuda-wheel-manifest.json'),'utf8'))[packageName];
   const urls=[...sources('cuda').map(base=>base+filename.replace('+','%2B')),spec.official];
   const cache=path.join(root,'runtime/acceleration/downloads');
-  await mkdir(cache,{recursive:true});
-  const target=path.join(cache,filename),partial=target+'.part';
-  const sha=spec.sha256;
-  async function valid(file){
-    try{
-      if((await stat(file)).size<100_000)return false;
-      if(!sha)return false;
-      const hash=createHash('sha256');
-      for await(const chunk of createReadStream(file))hash.update(chunk);
-      return hash.digest('hex')===sha;
-    }catch{return false;}
-  }
-  if(await valid(target))return target;
-  for(const url of [...new Set(urls)]){
-    console.log('下载 '+packageName+' CUDA 组件（支持断点续传）…');
-    try{await run('curl.exe',['--fail','--location','--continue-at','-','--connect-timeout','30','--speed-time','120','--speed-limit','1024','--output',partial,url]);}
-    catch(error){console.error(error.message);continue;}
-    if(!await valid(partial)){await unlink(partial).catch(()=>{});console.error('此下载源文件未通过官方 SHA-256 校验，切换下一源。');continue;}
-    await rename(partial,target);
-    return target;
-  }
-  throw Error('下载未完成，重新运行可从已有进度继续。');
+  return ensurePinnedFile({target:path.join(cache,filename),spec:{sha256:spec.sha256},urls,cwd:root,env,maxTime:3600});
 }
 
 if(repair.installTorch){
@@ -102,31 +81,9 @@ const stillMissing=await missingPythonPackages({python,expected:packageVersions,
 const stillMissingTorch=gpu?await missingPythonPackages({python,expected:torchVersions,modules:torchModules,cwd:root,env:probeEnv}):[];
 if(stillMissing.length||stillMissingTorch.length)throw Error(`加速组件依赖仍不完整：${[...stillMissing,...stillMissingTorch].join(', ')}`);
 
-await mkdir(path.dirname(modelPath),{recursive:true});
-let modelIsComplete=false;
-try{
-  const existing=await stat(modelPath);
-    if(existing.isFile()&&existing.size===modelSpec.size&&pinnedModelReady){
-    const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
-    modelIsComplete=result.code===0;
-  }
-}catch{}
-if(!modelIsComplete){
-  await unlink(modelPath+'.part').catch(()=>{});
-  for(const url of ['https://raw.githubusercontent.com/spotify/basic-pitch/main/basic_pitch/saved_models/icassp_2022/nmp.onnx','https://cdn.jsdelivr.net/gh/spotify/basic-pitch@main/basic_pitch/saved_models/icassp_2022/nmp.onnx'])try{
-    const response=await fetch(url,{signal:AbortSignal.timeout(60000)});
-    if(!response.ok)throw Error(`模型下载失败 ${response.status}`);
-    const data=Buffer.from(await response.arrayBuffer());
-    if(data.length!==modelSpec.size||createHash('sha256').update(data).digest('hex')!==modelSpec.sha256)throw Error('ONNX 模型未通过固定 SHA-256 校验');
-    await writeFile(modelPath+'.part',data);
-    await rename(modelPath+'.part',modelPath);
-    const result=await runProcess(python,['-c',"import onnxruntime as ort,sys; ort.InferenceSession(sys.argv[1],providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
-    if(result.code!==0){await unlink(modelPath).catch(()=>{});throw Error('ONNX 模型文件未通过完整性检查');}
-    modelIsComplete=true;
-    break;
-  }catch(error){console.error(error.message);}
-}
-if(!modelIsComplete)throw Error('模型尚未下载完成，请重试本脚本。');
+await ensurePinnedFile({target:modelPath,spec:modelSpec,candidates:await modelReuseCandidates(root,'basic-pitch/nmp.onnx'),urls:sources('basic'),cwd:root,env,maxTime:120});
+const modelCheck=await runProcess(python,['-c',"import onnxruntime as ort,sys; o=ort.SessionOptions(); o.intra_op_num_threads=1; o.inter_op_num_threads=1; ort.InferenceSession(sys.argv[1],sess_options=o,providers=['CPUExecutionProvider'])",modelPath],{cwd:root,env:probeEnv,stdio:'pipe'});
+if(modelCheck.code!==0)throw Error('已校验的 ONNX 模型无法加载，请检查组件依赖；保留模型，不重复下载。\n'+modelCheck.stderr.slice(-1200));
 
 const model=await readFile(modelPath);
 await writeFile(path.join(directory,'ready.json'),JSON.stringify({version:1,component,ortVersion,torchVersion:gpu?'2.7.1+cu128':null,modelSHA256:createHash('sha256').update(model).digest('hex')}));

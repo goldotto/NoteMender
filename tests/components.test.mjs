@@ -11,6 +11,7 @@ import {componentConfig,saveComponentConfig} from '../src/component-config.mjs';
 import {pythonFor} from '../src/python-runtime.mjs';
 import {accelerationEnv} from '../src/compute-runtime.mjs';
 import {orderedComponents} from '../public/component-catalog.mjs';
+import {componentInstallState} from '../public/components-ui.mjs';
 import {sources} from '../scripts/download-sources.mjs';
 
 async function fixture(work,options={}){
@@ -119,4 +120,55 @@ test('component refresh recovers after analysis activity ends',async()=>{
     assert.equal((await request('status?refresh=1')).body.busy,true);analysing=false;
     const ready=(await request('status?refresh=1')).body;assert.equal(ready.busy,undefined);assert.equal(ready.components.find(c=>c.id==='audio').ready,true);
   },{canStart:()=>!analysing,inspect:async(root,id)=>({ready:id==='audio'})});
+});
+
+test('CPU component reuses the configured GPU package without changing installation targets',async()=>{
+  const root=await mkdtemp(path.join(os.tmpdir(),'notemender-shared-cpu-'));
+  try{
+    const gpu={python:'external-python',directory:'external-gpu'};
+    await saveComponentConfig(root,{bindings:{gpu}});
+    const shared=await componentLocation(root,'cpu');
+    assert.equal(shared.directory,gpu.directory);assert.equal(shared.python,gpu.python);
+    assert.equal(shared.sharedWith,'gpu');assert.equal(shared.external,true);
+    const target=await componentLocation(root,'cpu',{localOnly:true});
+    assert.equal(target.directory,path.join(root,'runtime','acceleration','cpu'));assert.equal(target.sharedWith,undefined);
+    const own=path.join(root,'runtime','acceleration','cpu');await mkdir(own,{recursive:true});await writeFile(path.join(own,'ready.json'),'{}');
+    assert.equal((await componentLocation(root,'cpu')).directory,own);
+    await saveComponentConfig(root,{bindings:{gpu,cpu:{python:'cpu-python',directory:'explicit-cpu'}}});
+    assert.equal((await componentLocation(root,'cpu')).directory,'explicit-cpu');
+  }finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('shared CPU availability is probed and skips duplicate installation',async()=>{
+  let installs=0;await fixture(async({request,finished})=>{
+    const cpu=(await request('status')).body.components.find(c=>c.id==='cpu');
+    assert.equal(cpu.ready,true);assert.equal(cpu.sharedWith,'gpu');
+    await request('install',{components:['cpu']});assert.equal((await finished()).state,'done');assert.equal(installs,0);
+  },{location:async(root,id)=>({python:'existing-python',directory:root,external:true,...(id==='cpu'?{sharedWith:'gpu'}:{})}),inspect:async()=>({ready:true}),spawnImpl:()=>{installs++;throw Error('must not install');}});
+});
+
+test('installation can start without an external scan decision; missing selection and active tasks explain disabling',()=>{
+  const status={components:[{id:'audio',ready:true},{id:'cpu',ready:false}]};
+  assert.equal(componentInstallState(status,['cpu']).disabled,false);
+  assert.match(componentInstallState(status,['cpu']).reason,/不扫描电脑/);
+  assert.equal(componentInstallState(status,[]).disabled,true);
+  assert.match(componentInstallState(status,[]).reason,/勾选/);
+  assert.equal(componentInstallState(status,['cpu'],{refreshing:true}).disabled,true);
+  assert.equal(componentInstallState({...status,busy:true},['cpu']).disabled,true);
+  assert.equal(componentInstallState(status,['cpu'],{job:{state:'running'}}).disabled,true);
+  assert.equal(componentInstallState({components:[{id:'audio',ready:true},{id:'cpu',ready:true}]},['cpu']).disabled,true);
+});
+
+test('failed installer keeps a short heading and records detailed failure with component and duration',async()=>{
+  const records=[];
+  await fixture(async({request,finished})=>{
+    await request('install',{components:['cpu']});const job=await finished();
+    assert.equal(job.state,'failed');assert.ok(job.stage.length<80);assert.match(job.error,/fetch failed/);
+    assert.ok(job.logs.some(line=>line.includes('fetch failed')));
+    assert.ok(records.some(e=>e.event==='task.error'&&e.component==='audio'));
+    assert.ok(records.some(e=>e.event==='task.complete'&&e.state==='failed'&&Number.isFinite(e.elapsedMs)));
+  },{record:e=>records.push(e),inspect:async()=>({ready:false}),spawnImpl:()=>{
+    const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
+    setTimeout(()=>{child.stderr.emit('data',Buffer.from('fetch failed\n'+('详细安装日志 '.repeat(200))+'\n'));child.emit('close',1);},5);return child;
+  }});
 });

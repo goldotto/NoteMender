@@ -2,6 +2,13 @@ import {EDIT_STEP,keyAt} from './music.mjs';
 import {anchorsFor,beatAtTime,timeAtBeat} from './time-map.mjs';
 import {timelineLyrics} from './lyric-score.mjs';
 
+export function draftNotePosition(project,id,{from,to}){
+  const note=project.notes.find(n=>n.id===id);if(!note)return null;
+  const start=timeAtBeat(project,note.start),end=timeAtBeat(project,note.start+note.duration);
+  if(end<=from||start>=to)return null;
+  return Math.max(from,start);
+}
+
 export function draftScoreWindow(project,from,to,title){
   const first=Math.max(0,Math.floor(beatAtTime(project,from)/EDIT_STEP+1e-6)*EDIT_STEP);
   const last=Math.max(first+EDIT_STEP,Math.ceil(beatAtTime(project,to)/EDIT_STEP-1e-6)*EDIT_STEP);

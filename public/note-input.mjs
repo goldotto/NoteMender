@@ -1,5 +1,7 @@
 import {EDIT_STEP,keyAt,numberPitch,uid,validateProject} from './music.mjs';
 
+import {mapLyricIds,withOrphanLyrics} from './lyrics.mjs';
+
 const STEPS=[0,2,4,5,7,9,11];
 export function parseFreeNotes(text,{key=0}={}){
   if(typeof text!=='string'||text.length>4000)throw Error('音符内容过长');
@@ -42,15 +44,26 @@ export function formatBar(project,start,end){
 }
 
 export function replaceRange(project,start,end,relativeNotes){
-  if(start<0||end<=start||end-start>64)throw Error('段落范围无效或超过 64 拍');
-  const retained=[];
+  if(!Number.isFinite(start)||!Number.isFinite(end)||start<0||end<=start||end>14400||end-start>64)throw Error('段落范围无效或超过 64 拍');
+  const retained=[],mapping=new Map();
   for(const n of project.notes){
     if(n.start>=end||n.start+n.duration<=start){retained.push(n);continue;}
-    if(n.start<start)retained.push({...n,duration:start-n.start});
-    if(n.start+n.duration>end)retained.push({...n,id:uid(),start:end,duration:n.start+n.duration-end,lyric:''});
+    const survivors=[];
+    if(n.start<start){retained.push({...n,duration:start-n.start});survivors.push(n.id);}
+    if(n.start+n.duration>end){const id=survivors.length?uid():n.id;retained.push({...n,id,start:end,duration:n.start+n.duration-end,lyric:survivors.length?'':n.lyric});survivors.push(id);}
+    mapping.set(n.id,survivors);
   }
-  for(const n of relativeNotes){if(n.start<0||n.start+n.duration>end-start+1e-6)throw Error('音符超出段落范围');if(n.midi!==null){const position=n.start+start,match=project.notes.find(old=>Math.abs(old.start-position)<1e-6&&old.midi===n.midi);retained.push({...n,id:uid(),start:position,lyric:n.lyric||match?.lyric||''});}}
-  return validateProject({...project,notes:retained});
+  for(const n of relativeNotes){
+    if(!Number.isFinite(n.start)||!Number.isFinite(n.duration)||n.duration<EDIT_STEP||n.start<0||n.start+n.duration>end-start+1e-6)throw Error('音符超出段落范围');
+    if(n.midi!==null){const position=n.start+start,match=project.notes.find(old=>Math.abs(old.start-position)<1e-6&&old.midi===n.midi),id=uid();
+      retained.push({...n,id,start:position,lyric:n.lyric||match?.lyric||''});
+      // Preserve an unchanged note's explicit association, not a guessed overlap.
+      if(match&&mapping.has(match.id)&&!mapping.get(match.id).length&&Math.abs(match.duration-n.duration)<1e-6)mapping.set(match.id,[id]);
+    }
+  }
+  const next={...project,notes:retained};
+  if(project.lyrics!==undefined)next.lyrics=mapLyricIds(project.lyrics,mapping);
+  return validateProject(withOrphanLyrics(project,next));
 }
 
 export function expandToSong(project){

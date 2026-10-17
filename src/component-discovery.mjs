@@ -28,7 +28,18 @@ export async function componentLocation(root,id,{localOnly=false}={}){
     const ownHome=path.join(root,'runtime','models'),spec=(await modelSpecs(root))[id],ownModel=spec&&await exists(path.join(ownHome,'hub','checkpoints',spec.file));
     return {python:binding?.python||python,modelHome:binding?.modelHome||(ownModel?ownHome:audio.modelHome),external:Boolean(binding)};
   }
-  if(id==='gpu'||id==='cpu')return {python:binding?.python||python,directory:binding?.directory||path.join(root,'runtime','acceleration',id),external:Boolean(binding)};
+  if(id==='gpu'||id==='cpu'){
+    const directory=binding?.directory||path.join(root,'runtime','acceleration',id);
+    // A GPU ONNX Runtime package also provides CPU inference. Inspect that
+    // provider instead of asking for a duplicate CPU installation. Keep owned
+    // installation targets and explicit CPU bindings unchanged.
+    if(id==='cpu'&&!localOnly&&!binding&&!await exists(path.join(directory,'ready.json'))){
+      const gpu=await componentBinding(root,'gpu'),gpuDirectory=gpu?.directory||path.join(root,'runtime','acceleration','gpu');
+      if(gpu?.directory||await exists(path.join(gpuDirectory,'ready.json')))
+        return {python:gpu?.python||python,directory:gpuDirectory,external:Boolean(gpu),sharedWith:'gpu'};
+    }
+    return {python:binding?.python||python,directory,external:Boolean(binding)};
+  }
   if(id==='lyrics'){
     const directory=binding?.directory||path.join(root,'runtime','lyrics-qwen'),models=JSON.parse(await readFile(path.join(root,'scripts','qwen-download-manifest.json'),'utf8'));
     return {python:binding?.python||python,directory,dependencies:binding?binding.dependencies:path.join(directory,'dependencies'),overlay:binding?.overlay,metadata:binding?.metadata,modelPaths:binding?.modelPaths||Object.fromEntries(Object.entries(models).map(([key,spec])=>[key,path.join(directory,'models',spec.folder)])),external:Boolean(binding)};

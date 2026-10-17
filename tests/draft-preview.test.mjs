@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {freeScoreSVG,makeDemo,validateProject} from '../public/music.mjs';
-import {draftScoreWindow} from '../public/draft-preview.mjs';
+import {draftScoreWindow,draftNotePosition} from '../public/draft-preview.mjs';
 import {timelineLyrics,lyricRows} from '../public/lyric-score.mjs';
 import {timeAtBeat,beatAtTime} from '../public/time-map.mjs';
 import {replaceSectionCandidate} from '../public/local-candidates.mjs';
@@ -78,4 +78,23 @@ test('legacy lyrics appear once below their sliced notes; other song sections do
   assert.equal(silent.lyrics.length,0);
   assert.equal(silent.notes.length,0);
   assert.match(freeScoreSVG(silent,{beatsPerRow:4}),/data-row-starts="0,4,8"/);
+});
+
+test('read-only candidate score keeps selectable notes but removes note and word stretch handles',()=>{
+ const project=validateProject({...makeDemo(),notes:[{id:'a',start:0,duration:2,midi:60}],lyrics:[{id:'w',text:'唱',start:0,end:1,noteIds:['a'],reviewed:true}]});
+ const view=draftScoreWindow(project,0,3,'试听'),svg=freeScoreSVG(view,{editable:false,selected:'a'});
+ assert.match(svg,/timeline-note selected/);assert.match(svg,/cursor:pointer/);
+ assert.doesNotMatch(svg,/data-resize|data-lyric-resize|ew-resize|拖左右边缘|点“\+”插入/);
+ assert.match(svg,/点击音符选择试听起点/);
+ assert.match(freeScoreSVG(view),/data-resize="start"/);assert.match(freeScoreSVG(view),/data-lyric-resize/);
+});
+
+test('candidate note click resolves full IDs to original seconds under nonlinear mapping and clips crossings',()=>{
+ const project=validateProject({...makeDemo(),timeAnchors:[{beat:0,second:0},{beat:8,second:4},{beat:16,second:12},{beat:32,second:36}],notes:[{id:'cross',start:8,duration:4,midi:60},{id:'next',start:16,duration:2,midi:65}]});
+ const range={from:6,to:20};
+ assert.equal(draftNotePosition(project,'cross',range),6);
+ assert.equal(draftNotePosition(project,'next',range),12);
+ assert.equal(draftNotePosition(project,'missing',range),null);
+ assert.equal(draftNotePosition(project,'cross',{from:8,to:20}),null);
+ assert.equal(draftNotePosition(project,'next',{from:0,to:12}),null);
 });

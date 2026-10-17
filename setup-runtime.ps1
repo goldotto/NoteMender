@@ -42,10 +42,12 @@ function Test-Hash([string]$Path, [string]$Expected) {
 }
 
 function Find-CachedModel {
-    if ($ProjectOnly) { return $null }
     $candidates = @((Join-Path $modelDir $modelName))
-    if ($env:TORCH_HOME) { $candidates += Join-Path $env:TORCH_HOME "hub\checkpoints\$modelName" }
-    $candidates += Join-Path ([Environment]::GetFolderPath('UserProfile')) ".cache\torch\hub\checkpoints\$modelName"
+    if ($env:NOTEMENDER_REUSE_MODEL_HOME) { $candidates += Join-Path $env:NOTEMENDER_REUSE_MODEL_HOME "hub\checkpoints\$modelName" }
+    if (-not $ProjectOnly) {
+        if ($env:TORCH_HOME) { $candidates += Join-Path $env:TORCH_HOME "hub\checkpoints\$modelName" }
+        $candidates += Join-Path ([Environment]::GetFolderPath('UserProfile')) ".cache\torch\hub\checkpoints\$modelName"
+    }
     foreach ($candidate in ($candidates | Select-Object -Unique)) {
         if (Test-Hash $candidate $modelHash) { return $candidate }
     }

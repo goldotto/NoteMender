@@ -50,6 +50,8 @@ def probe(request):
             if numpy.__version__ != '1.26.4' or ort.__version__ not in ('1.22.0', '1.22.1'):
                 raise ValueError('ONNX Runtime 或 NumPy 版本不兼容')
             result.update(ortVersion=ort.__version__, directory=str(Path(ort.__file__).resolve().parent.parent), providers=ort.get_available_providers())
+            if component == 'cpu' and 'CPUExecutionProvider' not in result['providers']:
+                raise ValueError('ONNX Runtime 缺少 CPU 执行后端')
             if component == 'gpu':
                 import torch
                 import torchaudio
