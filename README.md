@@ -19,7 +19,7 @@
 
 ## Windows 安装
 
-当前安装构建 **2026102201**，内置 CNB 国内更新入口。旧构建首次迁移请先保存工作并关闭程序，再使用相同版本类型的安装包更新一次；保留原安装目录及模型，之后可在程序内检查并下载更新。
+Windows 安装包内置 CNB 国内更新入口，构建编号以发行页、安装包文件名和程序“版本与更新”显示为准。旧构建首次迁移请先保存工作并关闭程序，再将相同版本类型的安装包安装到新的空目录；保留旧目录及模型，从组件管理复用已有环境，之后可在程序内检查并下载更新。
 
 在 [CNB 发行版](https://cnb.cool/goldotto/NoteMender/-/releases/tag/v2.5.0-demo.7) 下载 Windows x64 完整 EXE；另有 [GitHub 发行版](https://github.com/goldotto/NoteMender/releases) 和 [Gitee 发行版](https://gitee.com/goldotto/note-mender/releases)。各站附件以对应发行页为准。
 
