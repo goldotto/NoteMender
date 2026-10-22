@@ -1,6 +1,9 @@
 name: Source checks
 on:
   push:
+    branches: [main]
+    paths-ignore:
+      - 'updates/**'
   pull_request:
 permissions:
   contents: read
@@ -8,7 +11,14 @@ jobs:
   source:
     runs-on: windows-latest
     timeout-minutes: 10
+    env:
+      # Avoid Windows RUNNER~1 aliases: update safety checks require canonical paths.
+      TEMP: '${{ runner.temp }}\notemender'
+      TMP: '${{ runner.temp }}\notemender'
     steps:
+      - name: Prepare canonical test temporary directory
+        shell: pwsh
+        run: New-Item -ItemType Directory -Force -Path $env:TEMP | Out-Null
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
