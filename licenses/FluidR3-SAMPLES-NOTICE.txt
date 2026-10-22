@@ -1,0 +1,16 @@
+FluidR3 pre-rendered instrument samples (bundled with NoteMender)
+Source: https://github.com/gleitz/midi-js-soundfonts
+Pinned revision: 044fab8e1456bfafc5776e86dfd6bb8697149aef
+Bank: FluidR3_GM
+Original Fluid Soundfont: Frank Wen and contributors.
+Pre-rendering and packaging: Benjamin Gleitzman and midi-js-soundfonts contributors.
+The source README identifies the Fluid Soundfont as Creative Commons Attribution 3.0:
+https://github.com/gleitz/midi-js-soundfonts/blob/044fab8e1456bfafc5776e86dfd6bb8697149aef/README.md
+License: https://creativecommons.org/licenses/by/3.0/
+Legal code: https://creativecommons.org/licenses/by/3.0/legalcode
+
+NoteMender distributes download instructions and integrity hashes. Optional downloaded
+MP3 sample data retains its original license and attribution; it is not relicensed
+under NoteMender's MIT license. NoteMender reads the object literal as data without
+executing the original JavaScript wrapper. Sample audio content is unmodified.
+The bundled instruments are acoustic_grand_piano, acoustic_guitar_nylon, violin, flute.

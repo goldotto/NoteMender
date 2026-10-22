@@ -5,6 +5,7 @@ import path from 'node:path';
 import {pythonFor} from './python-runtime.mjs';
 import {normalizeCompute} from '../public/compute-settings.mjs';
 import {componentBinding,audioRuntime} from './component-config.mjs';
+import {browserModelDirectory} from './browser-model.mjs';
 export function requestCompute(url){return normalizeCompute({mode:url.searchParams.get('compute'),device:url.searchParams.get('device')||'auto',threads:Number(url.searchParams.get('threads')||0)},os.availableParallelism());}
 export async function basicModelFile(root){
   const local=path.join(root,'runtime','models','basic-pitch','nmp.onnx');
@@ -24,9 +25,9 @@ export async function accelerationEnv(root,device='auto'){
   return {python,directory,qualificationFile,modelFile,env:{...process.env,PYTHONIOENCODING:'utf-8',PYTHONDONTWRITEBYTECODE:'1',PYTHONNOUSERSITE:'1',PYTHONPATH:[directory,process.env.PYTHONPATH].filter(Boolean).join(path.delimiter),TORCH_HOME:(await audioRuntime(root)).modelHome,JIANPU_BASIC_MODEL:modelFile}};
 }
 export async function modelFingerprint(root){
-  const hash=createHash('sha256'),model=JSON.parse(await readFile(path.join(root,'public/models/basic-pitch/model.json'),'utf8'));
+  const directory=await browserModelDirectory(root),hash=createHash('sha256'),model=JSON.parse(await readFile(path.join(directory,'model.json'),'utf8'));
   hash.update(JSON.stringify(model));
-  for(const group of model.weightsManifest)for(const file of group.paths)hash.update(await readFile(path.join(root,'public/models/basic-pitch',file)));
+  for(const group of model.weightsManifest)for(const file of group.paths)hash.update(await readFile(path.join(directory,file)));
   return hash.digest('hex');
 }
 export async function computeQualification(root,device){

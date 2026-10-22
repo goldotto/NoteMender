@@ -6,6 +6,9 @@ import {pythonFor} from './python-runtime.mjs';
 import {componentBinding,audioRuntime} from './component-config.mjs';
 import {terminateProcess} from './process-control.mjs';
 import {accelerationEnv} from './compute-runtime.mjs';
+import {muscriptorRuntime,inspectMuscriptor} from './muscriptor-runtime.mjs';
+import {soundfontLocation,inspectSoundfont} from './soundfonts.mjs';
+import {browserModelDirectory,inspectBrowserModel} from './browser-model.mjs';
 
 // Model hashes are read from the pinned package manifest, rather than trusting a ready marker.
 export async function modelSpecs(root){return JSON.parse(await readFile(path.join(root,'scripts','component-models.json'),'utf8'));}
@@ -21,6 +24,10 @@ export function runProbe(command,args,{cwd,env=process.env,signal,timeout=60000,
   });
 }
 export async function componentLocation(root,id,{localOnly=false}={}){
+  if(id==='basic')return {directory:await browserModelDirectory(root,{localOnly}),external:Boolean(!localOnly&&await componentBinding(root,'basic'))};
+  if(id==='python'||id==='audio-env'){const binding=localOnly?null:await componentBinding(root,id);return {python:binding?.python||await pythonFor(root),external:Boolean(binding)};}
+  if(id==='muscriptor')return muscriptorRuntime(root,{localOnly});
+  if(id.startsWith('sound-'))return soundfontLocation(root,id,{localOnly});
   const binding=localOnly?null:await componentBinding(root,id),audio=localOnly?{modelHome:path.join(root,'runtime','models')}:await audioRuntime(root);
   // localOnly selects installation targets, not a different interpreter.
   const python=await pythonFor(root);
@@ -51,6 +58,9 @@ export async function componentLocation(root,id,{localOnly=false}={}){
   throw Error('不支持的组件');
 }
 export async function inspectComponent(root,id,location,{deep=false,signal,run=runProbe}={}){
+  if(id==='basic')return inspectBrowserModel(root,location);
+  if(id==='muscriptor')return inspectMuscriptor(root,location,{deep,signal,run});
+  if(id.startsWith('sound-'))return inspectSoundfont(root,id,location);
   const details={...location,component:id,deep};
   if(id==='audio'||id==='six')details.model=(await modelSpecs(root))[id];
   if(id==='lyrics'){details.models=JSON.parse(await readFile(path.join(root,'scripts','qwen-download-manifest.json'),'utf8'));details.lock=JSON.parse(await readFile(path.join(root,'scripts','qwen-lyrics-dependencies.lock.json'),'utf8'));}

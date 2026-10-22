@@ -1,3 +1,4 @@
+import {BUILD} from './build-info.mjs';
 import {mkdir,readFile,rename,stat,unlink,appendFile} from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
@@ -17,11 +18,11 @@ export function safeEvent(input={}){
   return event;
 }
 export function diagnosticRoute(raw){
-  const known=new Set(['api','status','decode','tempo','plugins','invoke','export-file','components','lyrics','resources','singing','separation','compute','analysis','audio','other','bass','drums','instrumental','vocals','job','start','cancel','finish','scan','reuse','install','unlink','pitch','audits','analyse','transcribe','align','basic-pitch','diagnostics','event','report','clear']);
+  const known=new Set(['api','muscriptor','result','midi','json','status','decode','tempo','plugins','invoke','export-file','components','lyrics','resources','singing','separation','compute','analysis','audio','other','bass','drums','instrumental','vocals','job','start','cancel','finish','scan','reuse','install','unlink','pitch','audits','analyse','transcribe','align','basic-pitch','diagnostics','event','report','clear','updates','client','session','check','settings','notes','history','download','prepare','abort-prepare','apply','restore-status']);
   try{const p=new URL(raw,'http://localhost').pathname;return p.startsWith('/api/')?p.split('/').map(x=>!x||known.has(x)?x:':id').join('/').slice(0,160):'/static';}catch{return '/invalid';}
 }
 
-export function createDiagnostics(root,{version='2.5.0-demo.7',maxBytes=1024*1024,files=3,maxEvents=300}={}){
+export function createDiagnostics(root,{version=BUILD.version,build=BUILD.build,maxBytes=1024*1024,files=3,maxEvents=300}={}){
   const directory=path.join(root,'runtime','logs'),file=path.join(directory,'runtime.jsonl'),session=randomUUID();
   let events=[],queue=Promise.resolve(),storageError=false,counts=new Map();
   const ready=(async()=>{
@@ -42,7 +43,7 @@ export function createDiagnostics(root,{version='2.5.0-demo.7',maxBytes=1024*102
     counts.set(key,now);if(counts.size>500)counts=new Map([[key,now]]);
     queue=queue.then(()=>ready).then(async()=>{events.push(event);events=events.slice(-maxEvents);await persist(event);}).catch(()=>{storageError=true;});
   }
-  async function snapshot(){await queue;await ready;return {version,session,storageError,environment:{platform:process.platform,architecture:process.arch,node:process.version,osRelease:os.release(),logicalCores:os.availableParallelism(),memoryGiB:Math.round(os.totalmem()/1024**3)},events:events.map(e=>({...e}))};}
+  async function snapshot(){await queue;await ready;return {version,build,session,storageError,environment:{platform:process.platform,architecture:process.arch,node:process.version,osRelease:os.release(),logicalCores:os.availableParallelism(),memoryGiB:Math.round(os.totalmem()/1024**3)},events:events.map(e=>({...e}))};}
   async function clear(){
     const operation=queue.then(async()=>{await ready;await mkdir(directory,{recursive:true});
       for(let i=0;i<files;i++)await unlink(i?file+'.'+i:file).catch(error=>{if(error.code!=='ENOENT')throw error;});
@@ -50,7 +51,7 @@ export function createDiagnostics(root,{version='2.5.0-demo.7',maxBytes=1024*102
     });queue=operation.catch(()=>{storageError=true;});return operation;
   }
   async function report({description='',steps='',expected='',browser='',view=''}={}){
-    const snapshotValue=await snapshot();return {format:'NoteMender-error-report-v1',reportId:randomUUID(),createdAt:new Date().toISOString(),...snapshotValue,feedback:{description:redact(description),steps:redact(steps),expected:redact(expected)},browser:redact(browser).slice(0,300),view:redact(view).slice(0,120)};
+    const snapshotValue=await snapshot();let updates=[];try{const rows=JSON.parse(await readFile(path.join(root,'runtime/updates/history.json'),'utf8'));if(Array.isArray(rows))updates=rows.slice(-5).map(h=>({at:h.at,from:numeric(h.from?.build),to:numeric(h.to?.build),result:code(h.result),phase:redact(h.phase||'').slice(0,120),reason:redact(h.reason||'').slice(0,600)}));}catch{}return {format:'NoteMender-error-report-v1',reportId:randomUUID(),createdAt:new Date().toISOString(),...snapshotValue,updates,feedback:{description:redact(description),steps:redact(steps),expected:redact(expected)},browser:redact(browser).slice(0,300),view:redact(view).slice(0,120)};
   }
   function close(){return queue;}
   record({event:'service.start',message:'本机日志启用；无自动上传'});

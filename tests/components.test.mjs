@@ -10,8 +10,24 @@ import {discoverPython,inspectComponent,componentLocation} from '../src/componen
 import {componentConfig,saveComponentConfig} from '../src/component-config.mjs';
 import {pythonFor} from '../src/python-runtime.mjs';
 import {accelerationEnv} from '../src/compute-runtime.mjs';
-import {orderedComponents} from '../public/component-catalog.mjs';
-import {componentInstallState} from '../public/components-ui.mjs';
+import {COMPONENTS,orderedComponents} from '../public/component-catalog.mjs';
+import {componentInstallState,applyComponentAvailability} from '../public/components-ui.mjs';
+
+test('component availability does not retrigger disabled observers after the value is applied',()=>{
+  const saved=globalThis.document;let disabled=false,writes=0;
+  const option={get disabled(){return disabled;},set disabled(value){disabled=value;writes++;}};
+  const engine={value:'auto',querySelector:()=>option};
+  globalThis.document={getElementById:id=>id==='engine'?engine:null};
+  try{
+    for(const ready of [false,true]){
+      const status={components:[{id:'muscriptor',ready,description:'测试'}]};
+      applyComponentAvailability(status);const appliedWrites=writes;
+      for(let i=0;i<5;i++)applyComponentAvailability(status);
+      assert.equal(writes,appliedWrites);assert.equal(disabled,!ready);
+    }
+    assert.equal(writes,2);
+  }finally{globalThis.document=saved;}
+});
 import {sources} from '../scripts/download-sources.mjs';
 
 async function fixture(work,options={}){
@@ -65,7 +81,7 @@ test('analysis activity blocks installation, and arbitrary component or folder i
   assert.equal((await request('scan',{consent:true,folder:'relative'})).status,400);
 },{canStart:()=>false}));
 test('component dependency ordering and source fallback preserve pinned versions',()=>{
-  assert.deepEqual(orderedComponents(['lyrics','six','gpu']),['audio','lyrics','six','gpu']);assert.throws(()=>orderedComponents(['base']));
+  assert.deepEqual(orderedComponents(['lyrics','six','gpu']),['python','audio-env','lyrics','audio','six','basic','gpu']);assert.throws(()=>orderedComponents(['base']));
   assert.equal(sources('pypi','global')[0],'https://pypi.org/simple');assert.equal(sources('pypi','cn').length,3);assert.equal(sources('cuda','cn').length,2);
   const [command,args]=installerCommand('ROOT','gpu','NODE');assert.equal(command,'NODE');assert.ok(args.includes('--gpu'));assert.throws(()=>installerCommand('ROOT','anything'));
 });
@@ -118,8 +134,16 @@ test('repaired local venv takes precedence even when an old portable marker surv
 test('component refresh recovers after analysis activity ends',async()=>{
   let analysing=true;await fixture(async({request})=>{
     assert.equal((await request('status?refresh=1')).body.busy,true);analysing=false;
-    const ready=(await request('status?refresh=1')).body;assert.equal(ready.busy,undefined);assert.equal(ready.components.find(c=>c.id==='audio').ready,true);
+    const ready=(await request('status?refresh=1')).body;assert.equal(ready.busy,false);assert.equal(ready.components.find(c=>c.id==='audio').ready,true);
   },{canStart:()=>!analysing,inspect:async(root,id)=>({ready:id==='audio'})});
+});
+test('component status joins concurrent probes and cached busy polling does not start new probes',async()=>{
+  let calls=0,analysing=false;await fixture(async({request})=>{
+    const responses=await Promise.all([request('status?refresh=1'),request('status?refresh=1')]);const count=calls;
+    assert.ok(responses.every(r=>r.body.busy===false));assert.equal(count,COMPONENTS.length-1);
+    analysing=true;assert.equal((await request('status')).body.busy,true);assert.equal(calls,count);
+    analysing=false;assert.equal((await request('status')).body.busy,false);assert.equal(calls,count);
+  },{canStart:()=>!analysing,location:async()=>({external:true}),inspect:async()=>{calls++;await new Promise(r=>setTimeout(r,3));return {ready:true};}});
 });
 
 test('CPU component reuses the configured GPU package without changing installation targets',async()=>{
@@ -165,7 +189,7 @@ test('failed installer keeps a short heading and records detailed failure with c
     await request('install',{components:['cpu']});const job=await finished();
     assert.equal(job.state,'failed');assert.ok(job.stage.length<80);assert.match(job.error,/fetch failed/);
     assert.ok(job.logs.some(line=>line.includes('fetch failed')));
-    assert.ok(records.some(e=>e.event==='task.error'&&e.component==='audio'));
+    assert.ok(records.some(e=>e.event==='task.error'&&e.component==='python'));
     assert.ok(records.some(e=>e.event==='task.complete'&&e.state==='failed'&&Number.isFinite(e.elapsedMs)));
   },{record:e=>records.push(e),inspect:async()=>({ready:false}),spawnImpl:()=>{
     const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};

@@ -1,0 +1,24 @@
+{
+  "files": [
+    {
+      "file": "model.json",
+      "size": 174537,
+      "sha256": "1ed1aaee3409ec1dc098c8b01f430c0911f6fe9412e7af8086750f9e8f302f68",
+      "urls": [
+        "https://cdn.jsdelivr.net/npm/@spotify/basic-pitch@1.0.1/model/model.json",
+        "https://fastly.jsdelivr.net/npm/@spotify/basic-pitch@1.0.1/model/model.json",
+        "https://unpkg.com/@spotify/basic-pitch@1.0.1/model/model.json"
+      ]
+    },
+    {
+      "file": "group1-shard1of1.bin",
+      "size": 742392,
+      "sha256": "b142a95737a52e1e412d5f92e73d8bb80dfe8d04941acc0702f11f4524fb377c",
+      "urls": [
+        "https://cdn.jsdelivr.net/npm/@spotify/basic-pitch@1.0.1/model/group1-shard1of1.bin",
+        "https://fastly.jsdelivr.net/npm/@spotify/basic-pitch@1.0.1/model/group1-shard1of1.bin",
+        "https://unpkg.com/@spotify/basic-pitch@1.0.1/model/group1-shard1of1.bin"
+      ]
+    }
+  ]
+}

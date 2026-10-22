@@ -13,6 +13,6 @@ await mkdir('licenses',{recursive:true});
 for(const [pkg,file] of [['@spotify/basic-pitch','LICENSE'],['pitchy','LICENSE'],['@tensorflow/tfjs','LICENSE'],['@tonejs/midi','LICENSE']]){
   try{await writeFile(`licenses/${pkg.replace(/[@/]/g,'_')}.txt`,await readFile(`node_modules/${pkg}/${file}`));}catch{}
 }
-console.log('离线依赖与模型已打包。');
+console.log('前端离线依赖已构建；开发用模型仍在原位置，分发由版本清单单独选择。');
 
 await import('./scripts/build-slow-audio.mjs');

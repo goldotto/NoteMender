@@ -2,20 +2,22 @@ import {spawn,spawnSync} from 'node:child_process';
 import path from 'node:path';
 import {createHash} from 'node:crypto';
 
-const VERSION='2.5.0-demo.7';
+import {BUILD} from '../src/build-info.mjs';
+const VERSION=BUILD.version;
 async function probe(port){
-  try{const response=await fetch(`http://127.0.0.1:${port}/api/status`,{signal:AbortSignal.timeout(1000)});let version=null,instance=null;try{if(response.ok)({version,instance}=await response.json());}catch{}return {running:true,version,instance};}
+  try{const response=await fetch(`http://127.0.0.1:${port}/api/status`,{signal:AbortSignal.timeout(1000)});let version=null,instance=null,build=null;try{if(response.ok)({version,instance,build}=await response.json());}catch{}return {running:true,version,instance,build};}
   catch{return {running:false,version:null,instance:null};}
 }
 export async function ensureStudioServer(root){
   const instance=createHash('sha256').update(path.resolve(root).toLowerCase()).digest('hex').slice(0,16);
   const first=Number.parseInt(instance.slice(0,8),16)%18000;
   const ports=Array.from({length:16},(_,i)=>41000+(first+i)%18000);
-  for(const port of ports){const found=await probe(port);if(found.version===VERSION&&found.instance===instance)return port;}
+  for(const port of ports){const found=await probe(port);if(found.version===VERSION&&found.build===BUILD.build&&found.instance===instance)return port;}
+  for(const port of ports){const found=await probe(port);if(found.instance===instance)throw Error('此目录仍有另一构建运行，请关闭旧服务后重新启动。');}
   let port=null;for(const candidate of ports)if(!(await probe(candidate)).running){port=candidate;break;}
   if(port===null)throw Error('本机听谱端口均被占用，请先关闭一个旧版听谱服务。');
   const child=spawn(process.execPath,[path.join(root,'server.mjs')],{cwd:root,env:{...process.env,PORT:String(port)},detached:true,windowsHide:true,stdio:'ignore'});child.unref();
-  for(let i=0;i<40;i++){const found=await probe(port);if(found.version===VERSION&&found.instance===instance)return port;await new Promise(resolve=>setTimeout(resolve,250));}
+  for(let i=0;i<40;i++){const found=await probe(port);if(found.version===VERSION&&found.build===BUILD.build&&found.instance===instance)return port;await new Promise(resolve=>setTimeout(resolve,250));}
   throw Error('新版听谱服务未能启动。请检查本机运行环境。');
 }
 export function openStudioPage(url){

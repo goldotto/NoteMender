@@ -1,0 +1,17 @@
+MuScriptor large model weights
+
+Upstream: https://huggingface.co/MuScriptor/muscriptor-large
+Weights revision: 8809fdfbed2affa7ade94a7059e746e3880720e7
+License: Creative Commons Attribution-NonCommercial 4.0 International
+https://creativecommons.org/licenses/by-nc/4.0/
+
+Access also requires acceptance of the model repository's supplementary
+conditions, including the user's responsibility for necessary rights in
+inputs and outputs. Read and accept the current upstream terms yourself.
+
+These model weights are NOT covered by NoteMender's MIT license and are
+NOT included in the source distribution. The optional installer downloads
+the pinned model only after the user accepts its terms and authenticates
+with the upstream service or selects an already downloaded model file.
+
+MuScriptor code has a separate MIT license; see MuScriptor-MIT.txt.

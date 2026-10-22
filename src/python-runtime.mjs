@@ -6,7 +6,7 @@ export async function pythonFor(root,{owned=process.env.NOTEMENDER_INSTALL_MANAG
   // The installer may read from a validated interpreter while writing overlays
   // exclusively into this project. This override is supplied only to its child.
   if(owned&&process.env.NOTEMENDER_INSTALL_PYTHON)return process.env.NOTEMENDER_INSTALL_PYTHON;
-  const binding=owned?null:await componentBinding(root,'audio');
+  const binding=owned?null:(await componentBinding(root,'audio')||await componentBinding(root,'audio-env'));
   if(binding?.python)return binding.python;
   if(!owned&&process.env.JIANPU_PYTHON)return process.env.JIANPU_PYTHON;
   const local=path.join(root,'.venv','Scripts','python.exe');

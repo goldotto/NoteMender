@@ -1,0 +1,15 @@
+import {readFile,writeFile,mkdir} from 'node:fs/promises';
+import path from 'node:path';
+import {fileURLToPath} from 'node:url';
+import {ensureStudioServer,openStudioPage} from './local-server.mjs';
+import {orderedComponents} from '../public/component-catalog.mjs';
+const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..');
+const ids=(process.argv[2]||'').split(',').filter(Boolean);
+if(ids.length)orderedComponents(ids);
+await mkdir(path.join(root,'runtime'),{recursive:true});
+await writeFile(path.join(root,'runtime/first-run.json'),JSON.stringify({version:1,completed:ids.length===0}));
+const port=await ensureStudioServer(root),query=new URLSearchParams({selected:ids.join(',')});
+if(process.argv.includes('--scan'))query.set('consent','1');
+const folder=process.argv.find(x=>x.startsWith('--folder='))?.slice(9);
+if(folder&&path.isAbsolute(folder))query.set('folder',folder);
+await openStudioPage(`http://127.0.0.1:${port}/${ids.length||process.argv.includes('--scan')||folder?'install.html?'+query:''}`);

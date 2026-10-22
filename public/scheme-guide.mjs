@@ -1,4 +1,5 @@
 export function candidateSchemeHelp(method){
+  if(method.includes('MuScriptor'))return 'MuScriptor large 0.3.0 多乐器转谱模型，输入原曲，预测乐器家族及多音音符；检测到人声时优先展示。这里按近同时和弦与前后音高连续性整理成单旋律（高／低声部另可选），不是分离音轨，也不保证是歌曲主旋律。原始多轨 MIDI 可另外导出；“重新整理候选”复用缓存，不重跑模型。未经过歌词或 Basic Pitch 修正；效果须听审。权重仅限非商用。';
   if(method.includes('ROSVOT 原始分音')||method.includes('字词条件'))return 'ROSVOT + RMVPE，输入了 Qwen 的字词时间。这份结果尚未做后续对应修整，但模型分音已经受歌词边界影响；仅作辅助备选，适合核对换字、重新起唱。';
   if(method.includes('ROSVOT')&&(method.includes('字词对应')||method.includes('字词对齐')))return 'ROSVOT 字词条件结果再按文字边界修整。容易过分切音、并音；仅作辅助备选，试听后决定是否采用。';
   if(method.includes('ROSVOT'))return 'ROSVOT 演唱音符模型 + RMVPE 音高模型 + RWBD 边界预测。未输入 Qwen 歌词时间；适合主唱分音对照，不适合器乐。公开权重以中文演唱训练，其他语言需听审。';

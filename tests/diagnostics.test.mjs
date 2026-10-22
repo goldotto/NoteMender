@@ -37,6 +37,11 @@ test('deduplication preserves different component checks and states',()=>tempora
   const logger=createDiagnostics(root);for(const component of ['cpu','gpu'])logger.record({event:'check.complete',component,state:'ready'});
   logger.record({event:'check.complete',component:'cpu',state:'missing'});const value=await logger.snapshot();assert.equal(value.events.filter(e=>e.event==='check.complete').length,3);await logger.close();
 }));
+
+test('feedback includes build and redacted updater failure but never private recovery contents',()=>temporary(async root=>{
+ await mkdir(path.join(root,'runtime/updates'),{recursive:true});await writeFile(path.join(root,'runtime/updates/history.json'),JSON.stringify([{at:'2026-10-19',from:{build:1},to:{build:2},result:'rolled-back',phase:'启动',reason:'D:/private folder/song.wav token=secret-value'}]));await writeFile(path.join(root,'runtime/updates/sessions-private.json'),'私人歌曲和歌词');
+ const logger=createDiagnostics(root,{build:123});try{const report=await logger.report(),text=reportText(report);assert.equal(report.build,123);assert.match(text,/rolled-back/);for(const privateValue of ['private folder','secret-value','私人歌曲和歌词'])assert.ok(!text.includes(privateValue));assert.ok(!reportText(report,{includeLogs:false}).includes('rolled-back'));}finally{await logger.close();}
+}));
 test('feedback API is authenticated, records errors without request contents and exports a sanitized report',()=>temporary(async root=>{
   const app=createApp({analysisRoot:root,exportDirectory:path.join(root,'exports')});await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));const base='http://127.0.0.1:'+app.address().port;
   try{
@@ -51,4 +56,9 @@ test('feedback API is authenticated, records errors without request contents and
     assert.equal((await fetch(base+'/api/diagnostics/event',{method:'POST',headers,body:JSON.stringify({source:'browser',message:'x'.repeat(25000)})})).status,413);
     assert.equal((await fetch(base+'/api/diagnostics/clear',{method:'POST',headers,body:'{}'})).status,200);assert.equal((await (await fetch(base+'/api/diagnostics/status',{headers})).json()).events.length,0);
   }finally{await new Promise(resolve=>app.close(resolve));await app.diagnostics.close();}
+}));
+
+test('update heartbeat and repeated status reads do not flood reports or repeat an already recorded check error',()=>temporary(async root=>{
+ const app=createApp({analysisRoot:root,updatesOptions:{fetchImpl:async()=>{throw Error('offline');}}});await new Promise(r=>app.listen(0,'127.0.0.1',r));const base='http://127.0.0.1:'+app.address().port;
+ try{const {token}=await (await fetch(base+'/api/status')).json(),headers={'X-Studio-Token':token,'Content-Type':'application/json'};await fetch(base+'/api/updates/check',{method:'POST',headers,body:'{}'});for(let i=0;i<4;i++){await fetch(base+'/api/updates/status',{headers});await fetch(base+'/api/updates/client',{method:'POST',headers,body:JSON.stringify({id:'00000000-0000-0000-0000-000000000000'})});}const snapshot=await app.diagnostics.snapshot();assert.equal(snapshot.events.filter(e=>e.event==='task.failed').length,0);assert.equal(snapshot.events.filter(e=>e.event==='update.check-failed').length,1);assert.ok(!snapshot.events.some(e=>e.event==='request.complete'&&e.status===200&&e.message==='/api/updates/client'));}finally{await new Promise(r=>app.close(r));await app.diagnostics.close();}
 }));

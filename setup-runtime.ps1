@@ -1,7 +1,8 @@
 ﻿param(
     [switch]$BasicOnly,
     [switch]$CheckOnly,
-    [switch]$ProjectOnly
+    [switch]$ProjectOnly,
+    [switch]$EnvironmentOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -200,7 +201,10 @@ Write-Host '基础运行环境已经就绪。'
 if ($BasicOnly) { exit 0 }
 
 $pythonForAudio = $null
-if (Test-AudioEnvironment (Join-Path $pythonDir 'python.exe')) {
+if ($env:NOTEMENDER_INSTALL_PYTHON -and (Test-AudioEnvironment $env:NOTEMENDER_INSTALL_PYTHON)) {
+    $pythonForAudio = $env:NOTEMENDER_INSTALL_PYTHON
+    Write-Host '复用组件管理已经校验的音频环境，不修改其中依赖。'
+} elseif (Test-AudioEnvironment (Join-Path $pythonDir 'python.exe')) {
     $pythonForAudio = Join-Path $pythonDir 'python.exe'
     Write-Host '复用本程序内置的 Python 音频环境。'
 } elseif (Test-AudioEnvironment $venvPython) {
@@ -226,7 +230,7 @@ if ($ProjectOnly -and -not $pythonForAudio -and -not (Test-Python311 $basePython
     $selectedBase = $null
     if (Test-Path -LiteralPath $settingsFile) { $selectedBase = (Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json).bindings.python.python }
     if ($selectedBase -and (Test-Python311 $selectedBase)) { $basePython = $selectedBase }
-    else { throw '缺少基础 Python 解释器。请重新解压基础版／轻量版，或在组件管理中允许扫描并复用 Python 3.11。' }
+    else { throw '缺少基础 Python 解释器。请在组件管理中安装 Python 组件，或允许扫描并复用 Python 3.11。' }
 }
 if (-not $pythonForAudio) {
 if (-not (Test-Path -LiteralPath $venvPython) -and -not (Test-Python311 $basePython)) {
@@ -291,6 +295,7 @@ if ($pythonForAudio -ieq $venvPython) {
 }
 Write-Host 'Python 音频环境就绪。'
 
+if ($EnvironmentOnly) { exit 0 }
 New-Item -ItemType Directory -Path $modelDir -Force | Out-Null
 $modelFile = Join-Path $modelDir $modelName
 if (-not (Test-Hash $modelFile $modelHash)) {

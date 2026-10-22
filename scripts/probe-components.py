@@ -28,7 +28,7 @@ def probe(request):
         if component == 'python':
             import venv
             import ensurepip
-        elif component in ('audio', 'six'):
+        elif component in ('audio-env', 'audio', 'six'):
             for name in ['torch', 'torchaudio', 'numpy', 'demucs', 'librosa', 'av', 'soundfile']:
                 importlib.import_module(name)
             import torch
@@ -36,6 +36,9 @@ def probe(request):
                 raise ValueError('音频依赖版本与此版本不兼容')
             if torch.__version__ not in ('2.5.1+cpu', '2.7.1+cu128') or metadata.version('torchaudio') != torch.__version__:
                 raise ValueError('Torch／torchaudio 版本不兼容')
+            if component == 'audio-env':
+                result.update(ready=True, torchVersion=torch.__version__, crepe=importlib.util.find_spec('torchcrepe') is not None)
+                return result
             spec = request['model']
             file = Path(request['modelHome']) / 'hub' / 'checkpoints' / spec['file']
             if not file.is_file() or file.stat().st_size != spec['size']:
