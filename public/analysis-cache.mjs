@@ -1,7 +1,7 @@
 import {EVIDENCE_VERSION} from './recognition-evidence.mjs';
 export function acquisitionSettings(engine,options){
   return {version:EVIDENCE_VERSION,engine,source:options.source,minMidi:options.minMidi,maxMidi:options.maxMidi,
-    profile:options.pipeline==='legacy'?'legacy':'corrected',external:options.pipeline==='pyin'?'pyin':options.pipeline==='crepe'?'crepe':null,sr:22050,...(options.execution?{compute:{backend:engine==='pitchy'?'pitchy-cpu':options.execution.basicBackend,model:options.execution.basicFingerprint,precision:'fp32',stems:options.sourceFingerprint||'original',...(options.pipeline==='crepe'?{externalBackend:options.execution.pitchBackend||'cpu'}:{})}}:{})};
+    profile:options.pipeline==='legacy'?'legacy':'corrected',external:options.pipeline==='pyin'?'pyin':options.pipeline==='crepe'?'crepe':null,sr:22050,...(options.execution?{compute:{backend:options.execution.basicBackend,model:options.execution.basicFingerprint,precision:'fp32',stems:options.sourceFingerprint||'original',...(options.pipeline==='crepe'?{externalBackend:options.execution.pitchBackend||'cpu'}:{})}}:{})};
 }
 export async function analysisKey(samples,engine,options){
   const audioHash=await crypto.subtle.digest('SHA-256',samples.buffer.slice(samples.byteOffset,samples.byteOffset+samples.byteLength));

@@ -1,5 +1,9 @@
+import {vocalNote,vocalSlurs} from './vocal-score.mjs';
+import {tr} from './i18n.mjs';
 import {engravingSettings} from './engraving-settings.mjs';
 import {anchorsFor,timeAtBeat} from './time-map.mjs';
+import {normalizeMarkers} from './project-markers.mjs';
+import {scoreCursorPosition} from './score-cursor.mjs';
 import {validateSectionRange} from './sections.mjs';
 import {normalizeLyrics,lyricLabels} from './lyrics.mjs';
 import {timelineLyrics,lyricRows} from './lyric-score.mjs';
@@ -30,26 +34,27 @@ export function validateProject(value) {
     const start=number(n.start,0,14400,'起始拍'),duration=number(n.duration,EDIT_STEP,128,'时值');
     if(Math.abs(snap(start,EDIT_STEP)-start)>1e-5||Math.abs(snap(duration,EDIT_STEP)-duration)>1e-5)throw Error('音符需对齐到 1/16 拍网格');
     if(n.midi!==null && (!Number.isInteger(n.midi)||n.midi<21||n.midi>108))throw Error('音高须为 MIDI 21–108 或休止');
-    return {id:typeof n.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(n.id)?n.id:uid(),start,duration,midi:n.midi,confidence:typeof n.confidence==='number'&&Number.isFinite(n.confidence)?clamp(n.confidence,0,1):1,reviewStatus:n.reviewStatus==='reviewed'?'reviewed':'pending',reviewFlags:Array.isArray(n.reviewFlags)?n.reviewFlags.slice(0,4).map(x=>String(x).slice(0,30)):[],lyric:String(n.lyric||'').slice(0,40)};
+    return {id:typeof n.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(n.id)?n.id:uid(),start,duration,midi:n.midi,confidence:typeof n.confidence==='number'&&Number.isFinite(n.confidence)?clamp(n.confidence,0,1):1,reviewStatus:n.reviewStatus==='reviewed'?'reviewed':'pending',reviewFlags:Array.isArray(n.reviewFlags)?n.reviewFlags.slice(0,4).map(x=>String(x).slice(0,30)):[],lyric:String(n.lyric||'').slice(0,40),...(typeof n.muEvent==='string'&&/^[a-f0-9]{64}:[a-zA-Z0-9_-]{1,80}$/.test(n.muEvent)?{muEvent:n.muEvent}:{}),...(n.vocal&&typeof n.vocal==='object'?{vocal:vocalNote(n.vocal)}:{})};
   }).sort((a,b)=>a.start-b.start);
   if(new Set(notes.map(n=>n.id)).size!==notes.length)throw Error('音符 ID 重复');
   for(let i=1;i<notes.length;i++) if(notes[i].start<notes[i-1].start+notes[i-1].duration-1e-5) throw Error('主旋律音符不能重叠，请调整起始拍与时值。');
   const end=notes.length ? notes.at(-1).start+notes.at(-1).duration : 0;
   if(end>14400)throw Error('工程太长');
   const aiLog=Array.isArray(value.aiLog)?value.aiLog.slice(-50).filter(x=>x&&typeof x==='object').map(x=>({at:String(x.at||'').slice(0,40),type:String(x.type||'').slice(0,30),model:String(x.model||'').slice(0,60),summary:String(x.summary||'').slice(0,1200),tokens:Number.isFinite(x.tokens)?Math.max(0,Math.floor(x.tokens)):0})):[];
-  const keyChanges=(value.keyChanges||[]).map(c=>{const beat=number(c.beat,0,14400,'转调位置'),k=number(c.key,0,11,'段落调号');if(!Number.isInteger(k)||Math.abs(snap(beat)-beat)>1e-5)throw Error('无效段落调号');return {beat,key:k};}).sort((a,b)=>a.beat-b.beat);
+  const keyChanges=(value.keyChanges||[]).map(c=>{const beat=number(c.beat,0,14400,'转调位置'),k=number(c.key,0,11,'段落调号');if(!Number.isInteger(k)||Math.abs(snap(beat,EDIT_STEP)-beat)>1e-5)throw Error('无效段落调号');return {beat,key:k};}).sort((a,b)=>a.beat-b.beat);
   if(keyChanges.length>100||new Set(keyChanges.map(c=>c.beat)).size!==keyChanges.length)throw Error('段落调号过多或位置重复');
-  const sections=(value.sections||[]).map(s=>{const audioStart=number(s.audioStart??Math.max(0,timeAtBeat(value,number(s.start,0,14400,'旧段落起始拍'))),0,3600,'区块起始秒'),audioEnd=number(s.audioEnd??Math.max(0,timeAtBeat(value,number(s.end,0,14400,'旧段落结束拍'))),0,3600,'区块结束秒');return {id:typeof s.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(s.id)?s.id:uid(),candidateId:typeof s.candidateId==='string'?s.candidateId.slice(0,80):null,name:String(s.name||'未命名段落').slice(0,40),kind:['intro','interlude','outro','verse','chorus','other'].includes(s.kind)?s.kind:'other',source:['original','vocals','other','bass','drums','instrumental','guitar','piano'].includes(s.source)?s.source:['intro','interlude','outro'].includes(s.kind)?'other':'vocals',audioStart,audioEnd,analysisMode:['auto','vocal','solo','dense'].includes(s.analysisMode)?s.analysisMode:'auto',analysisUsed:Array.isArray(s.analysisUsed)?s.analysisUsed.slice(0,120).filter(x=>x&&Number.isFinite(x.from)&&Number.isFinite(x.to)&&x.to>x.from).map(x=>({from:x.from,to:x.to,mode:['vocal','solo','dense'].includes(x.mode)?x.mode:'dense',source:['original','vocals','other','bass','drums','instrumental','guitar','piano'].includes(x.source)?x.source:'original',flags:Array.isArray(x.flags)?x.flags.slice(0,12).map(y=>String(y).slice(0,30)):[]})):[]};}).sort((a,b)=>a.audioStart-b.audioStart);
+  const sections=(value.sections||[]).map(s=>{const audioStart=number(s.audioStart??Math.max(0,timeAtBeat(value,number(s.start,0,14400,'旧段落起始拍'))),0,3600,'区块起始秒'),audioEnd=number(s.audioEnd??Math.max(0,timeAtBeat(value,number(s.end,0,14400,'旧段落结束拍'))),0,3600,'区块结束秒');return {id:typeof s.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(s.id)?s.id:uid(),candidateId:typeof s.candidateId==='string'?s.candidateId.slice(0,80):null,name:String(s.name||'未命名段落').slice(0,40),kind:['intro','interlude','outro','verse','chorus','other'].includes(s.kind)?s.kind:'other',source:['original','vocals','other','bass','drums','instrumental','guitar','piano'].includes(s.source)?s.source:['intro','interlude','outro'].includes(s.kind)?'other':'vocals',audioStart,audioEnd,analysisMode:['auto','vocal','solo','dense'].includes(s.analysisMode)?s.analysisMode:'auto',analysisUsed:Array.isArray(s.analysisUsed)?s.analysisUsed.slice(0,120).filter(x=>x&&Number.isFinite(x.from)&&Number.isFinite(x.to)&&x.to>x.from).map(x=>({from:x.from,to:x.to,mode:['vocal','solo','dense','muscriptor'].includes(x.mode)?x.mode:'dense',source:['original','vocals','other','bass','drums','instrumental','guitar','piano'].includes(x.source)?x.source:'original',flags:Array.isArray(x.flags)?x.flags.slice(0,12).map(y=>String(y).slice(0,30)):[]})):[]};}).sort((a,b)=>a.audioStart-b.audioStart);
   if(sections.length>100||new Set(sections.map(s=>s.id)).size!==sections.length)throw Error('段落过多或 ID 重复');
   sections.forEach(s=>validateSectionRange(sections,s,s.id));
   const offset=number(value.offset??0,-60,3600,'原音偏移');
   const timeAnchors=Array.isArray(value.timeAnchors)?value.timeAnchors.map(a=>({beat:number(a.beat,0,14400,'对齐拍'),second:number(a.second,-60,3600,'对齐秒')})):[];
   if(timeAnchors.length===1||timeAnchors.length>1200||timeAnchors.some((a,i)=>i&&(a.beat<=timeAnchors[i-1].beat||a.second<=timeAnchors[i-1].second)))throw Error('对齐点须按拍数和原音秒数递增');
   if(timeAnchors.length&&timeAnchors[0].beat!==0)throw Error('第一个对齐点必须从第 0 拍开始');
+  const markers=normalizeMarkers(value.markers);
   const audioResources=Array.isArray(value.audioResources)?value.audioResources.slice(0,800).filter(r=>r&&/^[a-f0-9]{64}$/.test(r.id)&&['original','vocals','other','bass','drums','instrumental','guitar','piano'].includes(r.source)&&Number.isFinite(r.audioStart)&&Number.isFinite(r.audioEnd)&&r.audioStart>=0&&r.audioEnd>r.audioStart&&r.audioEnd<=3600).map(r=>({id:r.id,source:r.source,audioStart:r.audioStart,audioEnd:r.audioEnd,model:String(r.model||'').slice(0,80)})):[];
   if(Array.isArray(value.alternates)&&value.alternates.length>2000)throw Error('备选谱最多 2000 份，请另存精简工程；不会截断导入。');
-  const alternates=Array.isArray(value.alternates)?value.alternates.map(c=>{if(Array.isArray(c.notes)&&c.notes.length>12000)throw Error('单份备选谱最多 12000 个音符；不会截断导入。');const notes=Array.isArray(c.notes)?c.notes.filter(n=>Number.isFinite(n.start)&&Number.isFinite(n.duration)&&n.start>=0&&n.duration>=EDIT_STEP&&Number.isInteger(n.midi)&&n.midi>=21&&n.midi<=108).map(n=>({...n,id:typeof n.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(n.id)?n.id:uid(),start:n.start,duration:n.duration,midi:n.midi,lyric:String(n.lyric||'').slice(0,40),confidence:clamp(n.confidence??.5,0,1),reviewFlags:Array.isArray(n.reviewFlags)?n.reviewFlags.slice(0,4).map(x=>String(x).slice(0,30)):[]})):[];return ({id:String(c.id||uid()).slice(0,80),sectionId:String(c.sectionId||'').slice(0,80),source:['original','other','vocals','bass','drums','instrumental','guitar','piano'].includes(c.source)?c.source:'original',method:String(c.method||'备选').slice(0,60),model:String(c.model||'').slice(0,80),instrument:String(c.instrument||'').slice(0,80),analysisId:/^[a-f0-9]{64}$/.test(c.analysisId||'')?c.analysisId:null,primary:Boolean(c.primary),resourceId:typeof c.resourceId==='string'&&/^[a-f0-9]{64}$/.test(c.resourceId)?c.resourceId:null,audioStart:Number.isFinite(c.audioStart)?c.audioStart:null,audioEnd:Number.isFinite(c.audioEnd)?c.audioEnd:null,diagnostics:Array.isArray(c.diagnostics)?c.diagnostics.slice(0,200).filter(x=>Number.isFinite(x.second)).map(x=>({second:x.second,end:Number.isFinite(x.end)?x.end:undefined,kind:String(x.kind||'待核对').slice(0,60),pitches:(x.pitches||[]).slice(0,4).filter(p=>Number.isInteger(p.midi)&&p.midi>=21&&p.midi<=108).map(p=>({engine:String(p.engine).slice(0,50),midi:p.midi}))})):[],notes,lyricAssist:Boolean(c.lyricAssist),...(Array.isArray(c.lyrics)?{lyrics:normalizeLyrics(c.lyrics,notes)}:{})});}):[];
-  return {...(value.engraving&&typeof value.engraving==='object'?{engraving:engravingSettings(value.engraving)}:{}),version:1,title:String(value.title||'未命名乐谱').slice(0,120),bpm,key,meter,layout:value.layout==='barred'?'barred':'free',keyChanges,sections,offset,timeAnchors,alternates,audioResources,notes,...(Array.isArray(value.lyrics)?{lyrics:normalizeLyrics(value.lyrics,notes)}:{}),sourceName:String(value.sourceName||'').slice(0,200),engine:String(value.engine||'手工编写').slice(0,100),aiLog};
+  const alternates=Array.isArray(value.alternates)?value.alternates.map(c=>{if(Array.isArray(c.notes)&&c.notes.length>12000)throw Error('单份备选谱最多 12000 个音符；不会截断导入。');const notes=Array.isArray(c.notes)?c.notes.filter(n=>Number.isFinite(n.start)&&Number.isFinite(n.duration)&&n.start>=0&&n.duration>=EDIT_STEP&&Number.isInteger(n.midi)&&n.midi>=21&&n.midi<=108).map(n=>({...n,id:typeof n.id==='string'&&/^[a-zA-Z0-9-]{1,80}$/.test(n.id)?n.id:uid(),start:n.start,duration:n.duration,midi:n.midi,lyric:String(n.lyric||'').slice(0,40),confidence:clamp(n.confidence??.5,0,1),reviewFlags:Array.isArray(n.reviewFlags)?n.reviewFlags.slice(0,4).map(x=>String(x).slice(0,30)):[]})):[];return ({id:String(c.id||uid()).slice(0,80),sectionId:String(c.sectionId||'').slice(0,80),source:['original','other','vocals','bass','drums','instrumental','guitar','piano'].includes(c.source)?c.source:'original',method:String(c.method||'备选').slice(0,60),model:String(c.model||'').slice(0,80),...(typeof c.inputModel==='string'?{inputModel:c.inputModel.slice(0,80)}:{}),instrument:String(c.instrument||'').slice(0,80),analysisId:/^[a-f0-9]{64}$/.test(c.analysisId||'')?c.analysisId:null,...(Number.isFinite(c.analysisStart)&&c.analysisStart>=0&&Number.isFinite(c.analysisEnd)&&c.analysisEnd>c.analysisStart&&c.analysisEnd<=3600?{analysisStart:c.analysisStart,analysisEnd:c.analysisEnd}:{}),primary:Boolean(c.primary),resourceId:typeof c.resourceId==='string'&&/^[a-f0-9]{64}$/.test(c.resourceId)?c.resourceId:null,audioStart:Number.isFinite(c.audioStart)?c.audioStart:null,audioEnd:Number.isFinite(c.audioEnd)?c.audioEnd:null,diagnostics:Array.isArray(c.diagnostics)?c.diagnostics.slice(0,200).filter(x=>Number.isFinite(x.second)).map(x=>({second:x.second,end:Number.isFinite(x.end)?x.end:undefined,kind:String(x.kind||'待核对').slice(0,60),pitches:(x.pitches||[]).slice(0,4).filter(p=>Number.isInteger(p.midi)&&p.midi>=21&&p.midi<=108).map(p=>({engine:String(p.engine).slice(0,50),midi:p.midi}))})):[],notes,lyricAssist:Boolean(c.lyricAssist),...(Array.isArray(c.lyrics)?{lyrics:normalizeLyrics(c.lyrics,notes)}:{})});}):[];
+  return {...(value.engraving&&typeof value.engraving==='object'?{engraving:engravingSettings(value.engraving)}:{}),...(Array.isArray(value.vocalSlurs)?{vocalSlurs:vocalSlurs(value.vocalSlurs,notes)}:{}),version:1,title:String(value.title||'未命名乐谱').slice(0,120),bpm,key,meter,layout:value.layout==='barred'?'barred':'free',keyChanges,sections,offset,timeAnchors,alternates,audioResources,notes,...(markers.length?{markers}:{}),...(Array.isArray(value.lyrics)?{lyrics:normalizeLyrics(value.lyrics,notes)}:{}),sourceName:String(value.sourceName||'').slice(0,200),engine:String(value.engine||'手工编写').slice(0,100),aiLog};
 }
 export function transpose(project, target, direction='nearest') {
   let shift=mod(target-project.key,12);
@@ -86,6 +91,23 @@ export function quantizeNotes(raw,bpm,offset=0,step=.25,trace=null) {
   return notes;
 }
 export const barLength = meter => {const [n,d]=meter.split('/').map(Number);return n*4/d;};
+export function meterBarMarkers(project,endBeat){
+  const length=barLength(project.meter),markers=[];
+  for(let beat=0,number=1;beat<endBeat;beat+=length,number++)markers.push({beat,number});
+  return markers;
+}
+
+const markerGroup='<g class="audio-bar-markers" pointer-events="none" aria-hidden="true">';
+function barMarkerSVG(x,y,number,height,maxX){
+  const labelWidth=17+String(number).length*7,labelX=Math.min(x+2,maxX-labelWidth);
+  return `<path d="M${x},${y}v${height}" stroke="#385e86" stroke-width="2" stroke-dasharray="4 2"/><rect x="${labelX}" y="${y}" width="${labelWidth}" height="14" rx="3" fill="#dbeaf8"/><text x="${labelX+4}" y="${y+10.5}" font-size="10" font-weight="700" fill="#274e75">§${number}</text>`;
+}
+
+export function workspaceMarkerSVG(x,y1,y2,marker){
+  const label=escapeXML(marker.label),description=escapeXML(marker.description),width=12+marker.label.length*7;
+  return `<g class="workspace-marker-pin" data-workspace-marker="${escapeXML(marker.id)}" data-marker-beat="${marker.beat}" data-marker-x="${x}" data-marker-top="${y1}" data-marker-bottom="${y2}" tabindex="0" role="button" aria-label="${description}"><title>${description}</title><path d="M${x},${y1}V${y2}" class="workspace-marker-line"/><g class="workspace-marker-hit"><rect x="${x-width/2}" y="${y1-16}" width="${width}" height="16" rx="3"/><text x="${x}" y="${y1-4}" text-anchor="middle">${label}</text></g></g>`;
+}
+
 export function scoreSegments(project) {
   const len=barLength(project.meter),total=project.notes.length?project.notes.at(-1).start+project.notes.at(-1).duration:len;
   const bars=Array.from({length:Math.max(1,Math.ceil(total/len))},()=>[]);
@@ -101,12 +123,19 @@ export function scoreSegments(project) {
   }
   return bars;
 }
-export function scoreSVG(project,{selected=null,flats=false,active=null}={}) {
+export function scoreSVG(project,{selected=null,flats=false,active=null,barMarkers=[],manualMarkers=[]}={}) {
   const bars=scoreSegments(project),len=barLength(project.meter),rowHeight=126,layout=[];let rows=0;
-  if(bars.some(bar=>bar.length>12||bar.some(n=>n.duration<.25)))return denseBarScoreSVG(project,bars,{selected,flats,active});
+  const markers=bars.map(()=>[]);
+  const manual=bars.map(()=>[]);
+  for(const marker of barMarkers)markers[Math.floor(marker.beat/len)]?.push(marker);
+  for(const marker of manualMarkers){
+    const index=marker.beat===bars.length*len?bars.length-1:Math.floor(marker.beat/len);
+    manual[index]?.push(marker);
+  }
+  if(bars.some(bar=>bar.length>12||bar.some(n=>n.duration<.25)))return denseBarScoreSVG(project,bars,{selected,flats,active,markers,manual});
   for(let i=0;i<bars.length;){let count=4;if(bars.slice(i,i+4).some(b=>b.length>7))count=2;if(bars.slice(i,i+count).some(b=>b.length>12))count=1;for(let col=0;col<count&&i<bars.length;col++,i++)layout.push({row:rows,col,count});rows++;}
   const width=1000,height=180+rows*rowHeight,margin=56;
-  let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}简谱"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif" fill="#252a29"><text x="500" y="55" text-anchor="middle" font-size="26" font-weight="700">${escapeXML(project.title)}</text><text x="56" y="101" font-size="15">1 = ${KEYS[project.key]}　 ${project.meter}　 ♩ = ${project.bpm}</text><text x="944" y="101" text-anchor="end" font-size="12" fill="#7b827e">听谱 · 主旋律简谱</text>`;
+  let s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}简谱"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif" fill="#252a29"><text x="500" y="55" text-anchor="middle" font-size="26" font-weight="700">${escapeXML(project.title)}</text><text x="56" y="101" font-size="15">1 = ${KEYS[project.key]}　 ${project.meter}　 ♩ = ${project.bpm}</text><text x="944" y="101" text-anchor="end" font-size="12" fill="#7b827e">${tr("听谱 · 主旋律简谱","NoteMender \u00b7 Melody notation")}</text>`;
   bars.forEach((bar,i)=>{
     const {row,col,count}=layout[i],bw=(width-margin*2)/count,bx=margin+col*bw,by=159+row*rowHeight;
     s+=`<text x="${bx+3}" y="${by-21}" font-size="10" fill="#999f99">${i+1}</text><path d="M${bx+bw-5},${by-5}v44" stroke="#a9b0a9" stroke-width="1"/>`;
@@ -126,30 +155,59 @@ export function scoreSVG(project,{selected=null,flats=false,active=null}={}) {
       if((lyricLabels(project).get(n.id)||n.lyric)&&!n.continued)s+=`<text x="${x}" y="${y+47}" text-anchor="middle" font-size="12">${escapeXML(lyricLabels(project).get(n.id)||n.lyric)}</text>`;
       s+='</g>';
     }
+    if(markers[i].length)s+=markerGroup+markers[i].map(({beat,number})=>
+      barMarkerSVG(bx+17+mod(beat,len)/len*(bw-28),by-5,number,48,bx+bw)).join('')+'</g>';
+    for(const marker of manual[i])s+=workspaceMarkerSVG(bx+17+(marker.beat-i*len)/len*(bw-28),by-5,by+43,marker);
   });
   s+=`<text x="56" y="${height-20}" font-size="11" fill="#8b918b">四分音符为 1 拍 · 浅黄色音符待校对 · 转调改变旋律音高，原音保持原调</text></g></svg>`;return s;
 }
-function denseBarScoreSVG(project,bars,{selected,flats,active}){
+function denseBarScoreSVG(project,bars,{selected,flats,active,markers,manual}){
   const width=1000,cell=74,perRow=12,barHeights=bars.map(bar=>43+Math.ceil(Math.max(1,bar.length)/perRow)*86),height=150+barHeights.reduce((a,b)=>a+b,0);
-  let y=105,s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}分小节简谱"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif"><text x="56" y="51" font-size="25" font-weight="700" fill="#29362f">${escapeXML(project.title)}</text><text x="56" y="80" font-size="13" fill="#697e69">1 = ${KEYS[project.key]}　${project.meter}　♩ = ${project.bpm}　· 密集音符按顺序换行</text>`;
+  let y=105,s=`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}分小节简谱"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif"><text x="56" y="51" font-size="25" font-weight="700" fill="#29362f">${escapeXML(project.title)}</text><text x="56" y="80" font-size="13" fill="#697e69">1 = ${KEYS[project.key]}　${project.meter}　♩ = ${project.bpm}　· ${tr("密集音符按顺序换行","Dense notes wrap in sequence")}</text>`;
   bars.forEach((bar,i)=>{
-    s+=`<text x="56" y="${y+18}" font-size="13" font-weight="600" fill="#386e5a">第 ${i+1} 小节　1=${KEYS[keyAt(project,i*barLength(project.meter))]}</text><path d="M56,${y+29}h888" stroke="#d6dfd4"/>`;
+    s+=`<text x="56" y="${y+18}" font-size="13" font-weight="600" fill="#386e5a">${tr(`第 ${i+1} 小节`,`Measure ${i+1}`,`第${i+1}小節`)}　1=${KEYS[keyAt(project,i*barLength(project.meter))]}</text><path d="M56,${y+29}h888" stroke="#d6dfd4"/>`;
     bar.forEach((n,j)=>{
       const x=56+j%perRow*cell,cy=y+39+Math.floor(j/perRow)*86,p=numberPitch(n.midi,keyAt(project,n.start),flats),bg=n.id===selected?'#d5eee6':n.id===active?'#d7f2ec':!n.id?'#f2f4ef':n.reviewStatus==='reviewed'?'#eef5ed':'#fff1d4';
       const click=n.id?`data-note="${escapeXML(n.id)}"`:`data-free-start="${n.start}"`;
       s+=`<g ${click} data-start="${n.start}" tabindex="0" role="button" aria-label="${escapeXML(pitchName(n.midi))}，第 ${n.start+1} 拍，${n.duration} 拍" style="cursor:pointer"><rect x="${x}" y="${cy}" width="68" height="77" rx="8" fill="${bg}" stroke="#d9e2d6"/><text x="${x+34}" y="${cy+34}" text-anchor="middle" font-family="Georgia,serif" font-size="25" font-weight="600" fill="#29362f">${p.accidental}${p.digit}${p.octave>0?'̇'.repeat(p.octave):p.octave<0?'̣'.repeat(-p.octave):''}</text><text x="${x+34}" y="${cy+53}" text-anchor="middle" font-size="10" fill="#687868">${n.duration} 拍${n.tieNext?' →':''}</text><text x="${x+34}" y="${cy+69}" text-anchor="middle" font-size="9" fill="#8b9789">${+(n.start+1).toFixed(4)} 拍</text></g>`;
     });
+    if(markers[i].length){
+      s+=markerGroup;
+      for(const {beat,number} of markers[i]){
+        const j=bar.findIndex(n=>beat<n.start+n.duration);
+        if(j<0)continue;
+        const n=bar[j],fraction=clamp((beat-n.start)/n.duration,0,1);
+        const x=56+(j%perRow+fraction)*cell,cy=y+39+Math.floor(j/perRow)*86;
+        s+=barMarkerSVG(x,cy,number,77,width-56);
+      }
+      s+='</g>';
+    }
+    for(const marker of manual[i]){
+      const found=bar.findIndex(n=>marker.beat<n.start+n.duration);
+      const j=found<0?bar.length-1:found;
+      if(j<0)continue;
+      const n=bar[j],fraction=clamp((marker.beat-n.start)/n.duration,0,1);
+      const x=56+(j%perRow+fraction)*cell,cy=y+39+Math.floor(j/perRow)*86;
+      s+=workspaceMarkerSVG(x,cy,cy+77,marker);
+    }
     y+=barHeights[i];
   });
-  s+=`<text x="56" y="${height-16}" font-size="11" fill="#8b918b">黄色待校对 · 密集音符按小节分组并自动换行 · 仍可点击逐音修改</text></g></svg>`;
+  s+=`<text x="56" y="${height-16}" font-size="11" fill="#8b918b">${tr("黄色待校对 · 密集音符按小节分组并自动换行 · 仍可点击逐音修改","Yellow notes need review \u00b7 Dense measures wrap automatically \u00b7 Click a note to edit")}</text></g></svg>`;
   return s;
 }
-export function freeScoreSVG(project,{selected=null,selectedIds=[],selectedGap=null,flats=false,zoom=180,beatsPerRow=4,measureText=null,compactHeader=false,selectedLyric=null,idPrefix="",editable=true}={}){
-  const left=42,rowTop=compactHeader?88:116,rowHeight=68,lastNote=project.notes.at(-1),endBeat=Math.max(project.previewEnd||0,(lastNote?.start||0)+(lastNote?.duration||0),...timelineLyrics(project).map(t=>t.beatEnd||0)),first=0,last=Math.max(beatsPerRow,Math.ceil((endBeat+(Number.isFinite(project.previewEnd)?0:EDIT_STEP))/beatsPerRow)*beatsPerRow),width=left*2+beatsPerRow*zoom;
+export function freeScoreSVG(project,{selected=null,selectedIds=[],selectedGap=null,flats=false,zoom=180,beatsPerRow=4,measureText=null,compactHeader=false,selectedLyric=null,idPrefix="",editable=true,barMarkers=[],manualMarkers=[]}={}){
+  const keyBand=project.keyChanges?.length?18:0;
+  const left=42,rowTop=(compactHeader?88:116)+keyBand,rowHeight=68+keyBand,lastNote=project.notes.at(-1),endBeat=Math.max(project.previewEnd||0,(lastNote?.start||0)+(lastNote?.duration||0),...timelineLyrics(project).map(t=>t.beatEnd||0),manualMarkers.reduce((end,marker)=>marker.beat<=14400?Math.max(end,marker.beat):end,0)),first=0,last=Math.max(beatsPerRow,Math.ceil((endBeat+(Number.isFinite(project.previewEnd)?0:EDIT_STEP))/beatsPerRow)*beatsPerRow),width=left*2+beatsPerRow*zoom;
   const rowStarts=[first];for(let beat=first+beatsPerRow;beat<=last+1e-6;beat+=beatsPerRow)rowStarts.push(beat);
   const rows=rowStarts.length-1,rowLayout=lyricRows(project,rowStarts,{rowTop,rowHeight}),height=rowLayout.at(-1).y+rowLayout.at(-1).height+28;
-  let s=`<svg class="graphical-score" data-zoom="${zoom}" data-left="${left}" data-row-top="${rowTop}" data-row-height="${rowHeight}" data-row-ys="${rowLayout.map(r=>r.y).join(',')}" data-row-heights="${rowLayout.map(r=>r.height).join(',')}" data-beats-per-row="${beatsPerRow}" data-row-starts="${rowStarts.join(',')}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}自由简谱"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif"><text x="${left}" y="${compactHeader?26:48}" font-size="${compactHeader?16:25}" font-weight="700" fill="#29362f">${escapeXML(project.title)}</text><text x="${left}" y="${compactHeader?48:76}" font-size="${compactHeader?11:13}" fill="#697e69">1 = ${KEYS[project.key]}　♩ = ${project.bpm}　· 色块长度代表时值，数字大小固定</text>`;
+  let s=`<svg class="graphical-score" data-zoom="${zoom}" data-left="${left}" data-row-top="${rowTop}" data-row-height="${rowHeight}" data-row-ys="${rowLayout.map(r=>r.y).join(',')}" data-row-heights="${rowLayout.map(r=>r.height).join(',')}" data-beats-per-row="${beatsPerRow}" data-row-starts="${rowStarts.join(',')}" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}" role="img" aria-label="${escapeXML(project.title)}${tr("自由简谱"," · Free numbered notation")}"><rect width="100%" height="100%" fill="#fffdf8"/><g font-family="'Microsoft YaHei', sans-serif"><text x="${left}" y="${compactHeader?26:48}" font-size="${compactHeader?16:25}" font-weight="700" fill="#29362f">${escapeXML(project.title)}</text><text x="${left}" y="${compactHeader?48:76}" font-size="${compactHeader?11:13}" fill="#697e69">1 = ${KEYS[keyAt(project,0)]}　♩ = ${project.bpm}　· ${tr("色块长度代表时值，数字大小固定","Block length shows duration; number size is fixed")}</text>`;
   for(let row=0;row<rows;row++){const y=rowLayout[row].y,from=rowStarts[row],to=rowStarts[row+1],w=(to-from)*zoom;s+=`<rect x="${left-8}" y="${y-27}" width="${beatsPerRow*zoom+16}" height="55" rx="8" fill="${row%2?'#f6f8f2':'#fafbf6'}"/><rect data-timeline-grid="${row}" data-row-start="${from}" data-row-end="${to}" x="${left}" y="${y-27}" width="${w}" height="55" fill="transparent"/>`;for(let beat=Math.ceil(from);beat<to;beat++){const x=left+(beat-from)*zoom;s+=`<path d="M${x},${y-20}v40" stroke="#dbe4d8"/><text x="${x+5}" y="${y-28}" font-size="10" fill="#91a18f">${beat+1}</text>`;}if(from%1)s+=`<text x="${left+5}" y="${y-28}" font-size="10" fill="#91a18f">${+(from+1).toFixed(3)}</text>`;}
+  // Reserve a band so modulation labels cannot cover notes, beat numbers or lyrics.
+  if(keyBand)for(let row=0;row<rows;row++){
+    const from=rowStarts[row],to=rowStarts[row+1],y=rowLayout[row].y-45;
+    s+=`<text class="timeline-key" x="${left}" y="${y}" font-size="10" fill="#386e5a">1=${KEYS[keyAt(project,from)]}</text>`;
+    for(const change of project.keyChanges||[])if(change.beat>from&&change.beat<to)s+=`<text class="timeline-key-change" x="${left+(change.beat-from)*zoom}" y="${y}" font-size="10" fill="#386e5a">转 1=${KEYS[change.key]}</text>`;
+  }
   const items=[];let cursor=first;for(const n of project.notes){const noteEnd=n.start+n.duration;if(n.start>cursor)items.push({start:cursor,duration:n.start-cursor,midi:null,gap:true});items.push(n);cursor=noteEnd;}if(cursor<last)items.push({start:cursor,duration:last-cursor,midi:null,gap:true});
   const selectedSet=new Set(selectedIds);
   for(const n of items){let t=n.start,remaining=n.duration,continued=false;while(remaining>1e-6){const row=Math.max(0,rowStarts.findIndex((start,i)=>i<rows&&t>=start-1e-6&&t<rowStarts[i+1]-1e-6)),fragment=Math.min(remaining,rowStarts[row+1]-t),x=left+(t-rowStarts[row])*zoom,y=rowLayout[row].y,w=fragment*zoom,p=numberPitch(n.midi,keyAt(project,t),flats),label=continued?'↳':`${p.accidental}${p.digit}${p.octave>0?'̇'.repeat(p.octave):p.octave<0?'̣'.repeat(-p.octave):''}`,selectedNote=n.id===selected||selectedSet.has(n.id),selectedGapPart=n.gap&&selectedGap!==null&&selectedGap>=t-1e-6&&selectedGap<t+fragment-1e-6,fill=n.gap?'#f1f3eb':selectedNote?'#b3dfc8':n.reviewStatus==='reviewed'?'#e7f0e5':'#f6e4c1',stroke=n.gap?'#c9d1c5':selectedNote?'#287b5b':n.reviewStatus==='reviewed'?'#92b59b':'#d7ac6b',group=n.id?`class="timeline-note${selectedNote?' selected':''}" data-note="${escapeXML(n.id)}"`:`data-free-start="${t}" data-gap-duration="${fragment}" ${selectedGapPart?'data-selected-gap="1"':''}`,labelName=n.gap?'空拍':pitchName(n.midi),ribbonX=x+1,ribbonWidth=Math.max(2,w-2),fullLabel=n.gap?(editable?'+':''):label,displayLabel=ribbonWidth>=Math.max(18,(measureText?measureText(fullLabel):fullLabel.length*14)+9)?fullLabel:'',tiny=!displayLabel&&(editable||!n.gap);
@@ -162,7 +220,24 @@ export function freeScoreSVG(project,{selected=null,selectedIds=[],selectedGap=n
   for(let row=0;row<rows;row++)for(const t of rowLayout[row].segments){const x=left+(t.from-rowStarts[row])*zoom,y=rowLayout[row].y+28+t.lane*24,w=Math.max(3,(t.to-t.from)*zoom-2),clip=idPrefix+'lyric-'+row+'-'+t.id,label=t.hasStart===false||t.from>t.beatStart+1e-6?'↳ '+t.text:t.text,captionX=x+(w+2)/2,captionClip=clip;
     s+=`<g class="score-lyric-bar${t.id===selectedLyric?' active':''}" data-lyric="${escapeXML(t.id)}" data-row="${row}" data-start="${t.from}" data-lyric-start="${t.beatStart}" data-lyric-end="${t.beatEnd}" tabindex="0" role="button" aria-label="歌词：${escapeXML(t.text)}"><defs><clipPath id="${escapeXML(clip)}"><rect x="${x+3}" y="${y}" width="${Math.max(0,w-6)}" height="20"/></clipPath></defs><rect class="lyric-ribbon" x="${x+1}" y="${y}" width="${w}" height="20" rx="4" fill="${t.reviewed?'#e5f0e9':'#edf1f7'}" stroke="${t.reviewed?'#94b4a0':'#acb9ca'}"/><text class="score-lyric" x="${captionX}" y="${y+14}" text-anchor="middle" font-size="11" fill="#3e5d4b" clip-path="url(#${escapeXML(captionClip)})" pointer-events="none">${escapeXML(label)}</text>${editable?`<rect data-lyric-resize="start" x="${x+1}" y="${y}" width="${Math.min(8,w)}" height="${w<24?9:20}" fill="transparent" style="cursor:ew-resize"/><rect data-lyric-resize="end" x="${x+1+Math.max(0,w-8)}" y="${w<24?y+11:y}" width="${Math.min(8,w)}" height="${w<24?9:20}" fill="transparent" style="cursor:ew-resize"/>`:""}</g>`;
   }
-  s+=`<text x="${left}" y="${height-11}" font-size="11" fill="#8b918b">${editable?'点色块在右侧编辑 · 拖色块移动 · 拖左右边缘调整时长 · 点“+”插入':'点击音符选择试听起点 · 继续试听从所选音开始 · 修改请先放入工作区'}</text></g></svg>`;return s;
+  if(barMarkers.length){
+    s+=markerGroup;
+    for(const {beat,number} of barMarkers){
+      const row=Math.floor((beat+1e-8)/beatsPerRow);
+      if(row<0||row>=rows)continue;
+      const x=left+Math.max(0,beat-rowStarts[row])*zoom,y=rowLayout[row].y;
+      s+=barMarkerSVG(x,y-23,number,49,width-left);
+    }
+    s+='</g>';
+  }
+  if(manualMarkers.length){
+    const geometry={starts:rowStarts,ys:rowLayout.map(row=>row.y),heights:rowLayout.map(row=>row.height),zoom,left};
+    for(const marker of manualMarkers){
+      const position=scoreCursorPosition(marker.beat,geometry);
+      if(position)s+=workspaceMarkerSVG(position.x,position.y1,position.y2,marker);
+    }
+  }
+  s+=`<text x="${left}" y="${height-11}" font-size="11" fill="#8b918b">${editable?tr('点色块在右侧编辑 · 拖色块移动 · 拖左右边缘调整时长 · 点“+”插入','Click to edit · Drag to move · Drag edges to resize · Click + to insert'):tr('点击音符选择试听起点 · 继续试听从所选音开始 · 修改请先放入工作区','Click a note to set the preview start · Adopt the candidate to edit')}</text></g></svg>`;return s;
 }
 export function midiFile(project) {
   const enc=new TextEncoder(),be=(n,len)=>Array.from({length:len},(_,i)=>(n>>((len-i-1)*8))&255);

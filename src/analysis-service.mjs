@@ -54,16 +54,26 @@ export function analysisService(root,{nativeRunner,canStart=()=>true}={}){
         send(405,{error:'方法不支持'});return true;
       }
       if(url.pathname==='/api/analysis/pitch'&&req.method==='POST'){
-        const compute=requestCompute(url),engine=url.searchParams.get('engine');if(!['pyin','crepe'].includes(engine))throw Error('不支持的实验音高引擎');
+        const compute=requestCompute(url),engine=url.searchParams.get('engine');if(!['pyin','crepe','dual'].includes(engine))throw Error('不支持的实验音高引擎');
         const minMidi=Number(url.searchParams.get('minMidi')||45),maxMidi=Number(url.searchParams.get('maxMidi')||88);
         if(!Number.isInteger(minMidi)||!Number.isInteger(maxMidi)||minMidi<21||maxMidi>108||minMidi>=maxMidi)throw Error('无效音域');
         if(busy||!canStart()){send(429,{error:'已有音频分析运行中'});return true;}busy=true;
         const controller=new AbortController(),close=()=>{if(!res.writableEnded)controller.abort();};res.on('close',close);
-        try{const bytes=await readBody(req,4*1024*1024);await mkdir(path.join(root,'runtime'),{recursive:true});send(200,await (compute.mode==='performance'&&nativeRunner?nativeRunner.analyse(bytes,'pitch',compute,{engine,minMidi,maxMidi},controller.signal):runPitchAnalysis(root,bytes,engine,{minMidi,maxMidi},controller.signal)));}
+        try{
+          const bytes=await readBody(req,4*1024*1024);
+          if(engine==='dual'&&!nativeRunner)throw Error('双音高分析环境不可用');
+          const config=engine==='dual'?{...compute,actualDevice:compute.mode==='performance'?compute.device:'cpu',
+            runtimeDevice:'auto',threads:compute.threads||2}:compute;
+          const options={engine,minMidi,maxMidi};
+          const value=(engine==='dual'||compute.mode==='performance'&&nativeRunner)
+            ? await nativeRunner.analyse(bytes,'pitch',config,options,controller.signal)
+            : await runPitchAnalysis(root,bytes,engine,options,controller.signal);
+          if(!res.destroyed)send(200,value);
+        }
         finally{busy=false;res.off('close',close);}return true;
       }
       send(404,{error:'分析接口不存在'});
-    }catch(e){send(400,{error:e.message});}return true;
+    }catch(e){if(!res.destroyed)send(400,{error:e.message});}return true;
   };
   handler.busy=()=>busy;return handler;
 }

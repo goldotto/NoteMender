@@ -1,17 +1,11 @@
 import {processEvidence} from '../public/recognition-v2.mjs';
 import {ownEvents,stitchEvidence,shiftEvidence} from '../public/recognition-evidence.mjs';
 
+import {readPcm16Wav} from './pcm-wav.mjs';
+
 export function readReviewWav(bytes){
-  const v=new DataView(bytes.buffer,bytes.byteOffset,bytes.byteLength),text=(p,n)=>String.fromCharCode(...bytes.subarray(p,p+n));
-  if(text(0,4)!=='RIFF'||text(8,4)!=='WAVE')throw Error('回放需要 PCM WAV');
-  let format,channels,rate,bits,offset,size;
-  for(let p=12;p+8<=bytes.length;){const length=v.getUint32(p+4,true);if(p+8+length>bytes.length)throw Error('WAV 数据不完整');
-    if(text(p,4)==='fmt '){format=v.getUint16(p+8,true);channels=v.getUint16(p+10,true);rate=v.getUint32(p+12,true);bits=v.getUint16(p+22,true);}
-    if(text(p,4)==='data'){offset=p+8;size=length;}p+=8+length+(length%2);
-  }
-  if(format!==1||bits!==16||rate!==22050||!channels||offset===undefined)throw Error('需要评测集中的 22050 Hz、16 位 WAV');
-  const samples=new Float32Array(Math.floor(size/(2*channels)));
-  for(let i=0;i<samples.length;i++){let sum=0;for(let c=0;c<channels;c++)sum+=v.getInt16(offset+2*(i*channels+c),true)/32768;samples[i]=sum/channels;}
+  const {samples,rate}=readPcm16Wav(bytes);
+  if(rate!==22050)throw Error('需要评测集中的 22050 Hz、16 位 WAV');
   return samples;
 }
 

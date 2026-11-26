@@ -1,7 +1,36 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {freeScoreSVG,makeDemo,validateProject} from '../public/music.mjs';
-import {draftScoreWindow,draftNotePosition} from '../public/draft-preview.mjs';
+import {draftScoreWindow,draftNotePosition,candidateNotationKey,draftPage,draftPageAt} from '../public/draft-preview.mjs';
+import {readFile} from 'node:fs/promises';
+import vm from 'node:vm';
+
+test('candidate notation key changes all notation without changing sound, variants, lyrics or timing',()=>{
+  const p=validateProject({...makeDemo(),key:8,keyChanges:[{beat:2,key:5}]}),before=structuredClone(p);
+  const c=candidateNotationKey(p,0);
+  assert.equal(c.key,0);assert.deepEqual(c.keyChanges,[]);assert.deepEqual(p,before);
+  for(const field of ['notes','lyrics','alternates','timeAnchors','audioResources'])assert.equal(c[field],p[field]);
+  assert.equal(draftScoreWindow(c,1,5,'').key,0);
+  for(const key of [-1,12,NaN,1.5])assert.throws(()=>candidateNotationKey(p,key));
+});
+
+test('real candidate key handler updates baseline and current choice and persists without editing workspace',async()=>{
+  const code=await readFile(new URL('../public/app.mjs',import.meta.url),'utf8'),begin=code.indexOf("on('draftKey','change',"),end=code.indexOf("on('draftBeatsInput'",begin);
+  const p=validateProject({...makeDemo(),key:8}),workspace=makeDemo();let handler;
+  const state={localDraft:p,localDraftBase:p,project:workspace,job:null,lyricsTask:null,candidateNotationKey,KEYS:['C'],
+    on:(_id,_event,fn)=>handler=fn,renderDraftScores(){state.rendered=true;},savePendingDraft(){state.saved=state.localDraft;},toast(){}};
+  vm.runInContext(code.slice(begin,end),vm.createContext(state));handler({target:{value:'0'}});
+  assert.equal(state.localDraft.key,0);assert.equal(state.localDraftBase.key,0);assert.equal(state.saved,state.localDraft);
+  assert.equal(state.project,workspace);assert.equal(state.localDraft.notes,p.notes);
+  state.job={};assert.throws(()=>handler({target:{value:'2'}}),/等待/);assert.equal(state.localDraft.key,0);
+});
+
+test('free score exposes effective row key and within-row modulation with reserved vertical space',()=>{
+  const p=validateProject({...makeDemo(),key:8,keyChanges:[{beat:0,key:0},{beat:2,key:2},{beat:4,key:5}]}),svg=freeScoreSVG(p,{beatsPerRow:4,compactHeader:true});
+  assert.match(svg,/1 = C/);assert.match(svg,/timeline-key-change[^>]*>转 1=D/);
+  assert.match(svg,/timeline-key[^>]*>1=F/);assert.match(svg,/data-row-height="86"/);
+  assert.deepEqual(p.keyChanges.map(c=>c.key),[0,2,5]);
+});
 import {timelineLyrics,lyricRows} from '../public/lyric-score.mjs';
 import {timeAtBeat,beatAtTime} from '../public/time-map.mjs';
 import {replaceSectionCandidate} from '../public/local-candidates.mjs';
@@ -97,4 +126,29 @@ test('candidate note click resolves full IDs to original seconds under nonlinear
  assert.equal(draftNotePosition(project,'missing',range),null);
  assert.equal(draftNotePosition(project,'cross',{from:8,to:20}),null);
  assert.equal(draftNotePosition(project,'next',{from:0,to:12}),null);
+});
+
+
+test('candidate sections page in original seconds, including a short final page and exact boundaries',()=>{
+  assert.deepEqual(draftPage({from:30,to:33}),{index:0,count:1,from:30,to:33});
+  const range={from:32.25,to:93.5};
+  assert.deepEqual(draftPage(range,3),{index:3,count:4,from:92.25,to:93.5});
+  assert.equal(draftPageAt(range,52.25),1);
+  assert.equal(draftPageAt(range,93.5),3);
+  assert.equal(draftPageAt(range,25),0);
+  assert.equal(draftPage({from:1.125,to:41.125},9).count,2);
+});
+
+test('a held note keeps its source identity on both pages and seeks to the displayed continuation',()=>{
+  const p=validateProject({...makeDemo(),offset:0,bpm:60,timeAnchors:[],notes:[
+    {id:'before',start:19,duration:1,midi:50},
+    {id:'held',start:20,duration:2,midi:60},
+    {id:'after',start:22,duration:1,midi:65}
+  ]});
+  const range={from:.25,to:42},a=draftPage(range),b=draftPage(range,1);
+  assert.deepEqual(draftScoreWindow(p,a.from,a.to,'').notes.map(n=>[n.id,n.hasEnd]),[['before',true],['held',false]]);
+  assert.deepEqual(draftScoreWindow(p,b.from,b.to,'').notes.map(n=>[n.id,n.hasStart]),[['held',false],['after',true]]);
+  assert.equal(draftNotePosition(p,'held',b),20.25);
+  assert.equal(draftNotePosition(p,'before',b),null);
+  assert.deepEqual(p.notes.map(n=>n.id),['before','held','after']);
 });

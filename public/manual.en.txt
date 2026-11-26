@@ -1,0 +1,257 @@
+NoteMender — User Manual
+
+Use the language selector in the top bar to switch between Simplified Chinese, English, and Japanese. The choice is saved in this browser. Switching languages preserves the project, note pitches, lyrics and filenames. Original diagnostic messages and release-note contents may remain in their original language.
+
+1. What NoteMender does
+
+Score preview is centered in the top navigation. Project contains Open, Save, and Restore backup. Help & settings contains Components, the guide, GitHub, updates, and feedback. Update availability stays visible with the menu closed. Use Edit tools and Lyrics in the right sidebar. The score toolbar groups selection and clipboard separately from note editing. The meter is alongside the key.
+The workspace starts in Synthesized melody when the app starts, when you open a project, or when you import a new song. If the score is empty, switch to original audio to listen. The zoomed waveform follows whenever the playhead leaves the visible range during playback. When paused, use the arrows or slider to browse and Playback position to return to the playhead.
+
+
+NoteMender is a local audio-to-numbered-notation workspace for listening, checking and editing a single melody. Recognition proposes candidates; it does not silently overwrite your working score. Listen to the original, compare alternatives, adopt a candidate and correct it manually.
+
+The workspace supports audio import, optional stem separation, section-based recognition, candidate playback, note and lyric editing, MIDI import, project recovery and score export. Recognition is an aid, not a guarantee of a correct lead melody. Instrument labels, octaves, short notes and timings need checking by ear.
+
+The app runs in a browser connected to a local Node.js service. Recognition uses local components when installed. The lightweight edition can edit, play and export without the full analysis environment. Optional components have their own licenses; NoteMender's MIT license does not replace them.
+
+2. Starting and preparing the app
+
+Use your installed NoteMender launcher. Keep the service running while using its browser page. Use the same local address and port to retain access to browser autosaves and pending candidates.
+
+Open Components to inspect actual installed or reused components. Reused external environments must remain at their existing location. Installation is confined to the program's runtime directory; it should not replace system Python or GPU drivers. NVIDIA acceleration requires compatible hardware, drivers and validated execution paths. Installed does not mean every model path is qualified for acceleration.
+
+Choose English or Simplified Chinese in the top bar. This is a preference for this browser, not a project setting. Changing the interface language does not translate song names, lyrics, filenames or your own text. Original diagnostic details and recognition results may retain their source language.
+
+3. A quick first session
+
+Load the bundled example to explore editing without running recognition, or start a blank score. Save any work you want to keep before replacing it. Use MIDI import if you already have notes in a MIDI file; choose one track and inspect the candidate.
+
+For audio, open Audio & recognition and choose or drop a recording. Common audio formats are supported, up to 120 MB and approximately ten minutes. Check the playback source, volume and speed first. Set a short analysis range for an initial trial, then generate candidates.
+
+Listen to the original and candidate over the same excerpt. Select alternatives by section and actual audio source. Adopt only when ready. Save a project JSON before extensive editing, and save another copy after useful progress.
+
+4. Full songs and separated stems
+
+Automatic separation produces vocal and instrumental stems for recognition and listening. Clear solo material may work without separation. Separation itself does not replace score notes. Available stems depend on the installed model and the generated resources.
+
+Automatic full-song generation divides the recording into sections. Candidate choices can differ by section. The song-section waveform shows the whole recording by default; select a shorter window to inspect a local area. Viewing a short window does not shorten the recording or limit adoption to that window.
+
+The original recording, vocal stem, other instruments, bass, drums and instrumental mix are listening sources, not guaranteed musical voices. A mixed instrumental stem may contain several instruments.
+
+5. Generating and comparing candidates
+
+Start with the existing default recognition rules. Optional experimental profiles add different filtering or pitch evidence and can take longer. Restricting the pitch range too tightly may discard genuine notes. Timing quantization affects note boundaries, not pitches. Recognition estimates tempo from the original. If analysis is unavailable, the candidate uses the project tempo provisionally. Use the original-audio alignment points to correct its timing.
+
+MuScriptor and ROSVOT are optional. In the candidate dialog, open MuScriptor instrument tracks. The Analysis input selector lists the source audio used for that result. The colored piano roll shows predicted MIDI notes, including short notes, repeated attacks, chords and drums. Click an instrument to solo it, click again to exit solo, or use per-track mute and Restore all tracks. Click the roll to set a song-time position. Select Original or MIDI, then use the separate Play/Pause button. Changing mode or speed while playing continues from the current song position. Original and MIDI audition levels are matched automatically for the audible tracks. Use the main volume slider to adjust both.
+
+In the piano roll, open Track corrections to find possible mislabelled vocals using an existing vocal stem. Preview and select the suggested moves before applying them. Possible duplicates and notes matching the same pitch in an available accompaniment stem are unchecked by default. Merge tracks can move multiple source tracks to one target in the current section. In Edit notes, click a note or box-select several, then choose Move to track. Moves are undoable and affect the piano roll until you create a candidate.
+
+Enable Edit notes and choose a track. Drag a note to change its position or pitch, drag its right edge to adjust duration, or drag on empty space to add a note. Select a note to delete it or change its pitch with the arrow keys. Undo and Redo are available. Roll edits are saved with the pending candidate and included when you create a candidate from that track. Raw MIDI export still contains the model output.
+
+With MuScriptor enabled, vocal sections include both the separated vocal result and the original mix. Sections share analyses covering the same source and time range. To process a separate accompaniment, guitar or bass stem, find it under Analysis input and click Analyze this input. This processes only the current section.
+Choose Create candidate from this track to set this section's melody. Other sections keep their selected versions. The score lands on the 1/16-beat editing grid and reports dropped polyphonic notes and grid collisions. Opening, auditioning and creating use existing local results. Use the MuScriptor piano roll to select the input and instrument. Traditional candidates still offer source, scheme, and comparison controls. With an aligned vocal stem and CREPE available, pYIN and CREPE help choose between overlapping notes. Use Reprocess candidate to try it with a cached MuScriptor result. The regular candidate remains available when evidence is insufficient. Apply assembles all selected sections. A local retry takes the same predicted instrument and keeps the previous candidate if that track is empty.
+MuScriptor weights have noncommercial terms and require official access or a permitted local import. Raw multi-track MIDI remains available separately.
+
+In the candidate window, select a section. For traditional candidates, you can select an audio source and scheme or expand comparisons. Click a candidate note to select a listening start, then resume playback. The candidate is a preview, so note-edge resize handles are not editing controls there.
+
+The section playback slider fixes the start used by Return to start. Automatic paging while listening does not move that chosen start. You can audition the original excerpt, the source stem, drums or the candidate. Playback speed and score timbre are shared with the main workspace.
+
+Candidate 1=X changes the notation reference across the candidate. It replaces candidate section keys, changes displayed degrees and accidentals, and keeps actual MIDI pitches and sound unchanged. The selected key is retained on adoption.
+
+Adopting the complete candidate first backs up the old score and then replaces the workspace using the candidate's own timing map. It is not limited to the visible preview excerpt. Undo can restore the previous edit. Collapsing a candidate window retains pending data; deleting a candidate is a separate operation.
+
+6. Listening while editing
+
+Choose Synthesized melody or Original audio. Speed ranges from 0.10x to 2.00x with pitch preservation. This listening speed does not change project BPM, note pitches or exported musical tempo. Original recordings remain in their original key even when score notes are transposed.
+
+The waveform displays loudness over time, not pitch. Click it to seek. Waveform zoom changes only the time window. The follow option moves the view near its edges rather than continually sliding the waveform.
+
+Click a note to select it and position the vertical cursor. With box selection off, hold and drag on empty space to move that cursor continuously. Use the live beat position to place cuts precisely. Press S or use Split to cut a note at an internal cursor position.
+
+Drag note bodies to move notes, including across rows. Drag their edges to change duration. Use the right-hand editor for exact start, duration and pitch. Changes cannot create invalid overlaps or out-of-range pitches. Undo and Redo restore musical data and relevant selections.
+
+The duration review tool finds short or long notes; these are review candidates, not automatically wrong notes. Mark notes as manually reviewed after checking them. Pitch tracking cannot replace this listening judgement.
+
+7. Song sections, alignment and MIDI
+
+The current time and total duration appear directly above the waveform. The main player offers Synthesized melody (default) and Original audio.
+
+Expand Song sections above Listen and compare to view the full-song waveform and section list. The toolbar shortcut opens and locates the same panel. Sections use original-audio seconds. Drag blank section-track space to create a section; resize actual boundaries to adjust it. Sections cannot overlap and have a minimum length of 0.25 second. Naming a section helps navigation. Re-recognizing one section produces a candidate before adoption.
+
+Changing a section marker does not automatically delete score notes. Removing a section removes its marker and associated alternatives, keeping the working score and audio.
+
+The score uses beats while audio uses seconds. A global offset handles a uniform displacement. Alignment points associate score beats with original-audio seconds; positions between points are interpolated. Use local points to correct drift. Alignment-point beat values start at zero, while editing position fields generally display the first beat as 1.
+
+MIDI import offers one track as a single-melody candidate. Ordinary MIDI export writes the working melody. MuScriptor raw MIDI may contain overlapping notes and several tracks, so its result differs from the simplified score.
+
+8. Saving, recovery and export
+
+Save project JSON preserves notes, lyrics, timing and supported settings. Choose a filename independently of the song title. Files are saved in exports and downloaded; duplicate names are numbered rather than silently replaced. Maximum project size is 32 MB.
+
+A project may reference original-audio and candidate resources stored separately. Retain the corresponding resources when moving work to another device. Browser autosave is tied to the browser origin and is not a substitute for keeping project files. A port or browser-profile change can make saved browser data appear absent.
+
+Recovery backups are available for candidate adoption. A temporary failure to read a pending candidate should leave its recovery entry available for retry; explicit deletion is separate.
+
+Existing export options include project JSON, editable-score SVG, MIDI, rendered WAV and browser printing. Formal numbered-notation layout is a separate export-copy workflow described below. Exporting the current score does not automatically include an unadopted candidate.
+
+9. Common checks when something looks wrong
+
+No audio: check listening source, output device and volume. Try a known working score note. Original audio and stems must actually be loaded. Sampled timbres fall back when resources are unavailable; the original recording is independent of score timbre.
+
+Wrong displayed degrees: check 1=X and any section key changes. Changing the notation key changes the spelling of a pitch, not its sound. Use Transpose pitches only when actual pitches should change. Flats preference also changes notation without changing sound.
+
+Missing notes: inspect recognition scope, pitch limits, source stem and candidate alternative. A higher or louder voice need not be the lead melody. Do not interpret an empty preview window as proof that the full candidate is empty.
+
+With MuScriptor, the selected original-audio range is one section by default. Enable Separate vocals and instruments and detect sections to split it by vocal activity. Separation adds processing time.
+
+Slow analysis: check whether separation, optional Qwen lyrics, ROSVOT, MuScriptor or additional experimental pitch evidence was enabled. Extra models add computation. CUDA paths can fall back to CPU, and installed components do not guarantee GPU use. Inspect task and component messages before running another analysis.
+
+10. Recognition settings and tooltips
+
+Hover over controls for their purpose. The manual's control reference lists the same guidance. Default recognition keeps the existing baseline rules. Traditional recognition selects a strategy for each section using the default baseline and rules.
+
+MuScriptor precision Auto uses FP16 on CUDA and FP32 on CPU. FP16 reduces memory and time but may change output. BF16 requires suitable hardware. FP32 remains available for comparison. A failed half-precision path reports its fallback rather than claiming equivalent results.
+
+High-performance settings only select qualified backends. Thread count zero delegates to the runtime; changes apply to the next task. Do not change validation markers to claim acceleration is ready.
+
+11. Lyrics aligned to original audio
+
+Recognized or imported lyric text first belongs to original-audio time. Linking it to score notes is a separate step. Qwen transcription and alignment are optional. Recognition presents a preview; adopting it does not silently rewrite notes.
+
+Before generating with lyrics in Audio & transcription or recognizing lyrics in the Lyrics panel, set Lyrics language. Choose Japanese for known Japanese vocals, or Auto detect when unsure. Both controls share the same setting. Expand Japanese romaji to view a local dictionary’s pronunciation of existing Japanese lyrics. Check names and unusual song readings against the original audio.
+
+Open or paste TXT, LRC, SRT or WebVTT, then choose Preview lyric import and check the timing before applying. SRT and ordinary subtitle cues retain sentence start and end times. Inline timestamps in WebVTT or enhanced LRC can preserve individual words or characters. Enter the end time if the last enhanced LRC entry has no closing timestamp. Use UTF-8 for best compatibility.
+
+Edit a word's text, start and end independently. Link one word to one or several notes, or several words to one note. Linking normally preserves the lyric's own timing; following selected note boundaries is an explicit option. Recalculate links after timing corrections when needed.
+
+Split a word by specifying the two texts and an internal audio-second boundary. Merge consecutive words using the word tool. These operations do not automatically change note pitches or durations. Batch assignment accepts words separated by spaces or line breaks; inspect the scope before replacing text.
+
+12. Selection and everyday shortcuts
+
+Click a note or word to select it. Ctrl-click adds or removes an item; Shift supports range selection where available. F toggles box selection. With box selection enabled, drag a rectangle over notes and lyrics. Drag a selected block to move a selected group.
+
+Buttons show their keyboard shortcuts. Ctrl+C (⌘C on Mac) copies selected webpage text. While editing the score, Ctrl+C copies selected notes or lyrics, Ctrl+X cuts and Ctrl+V pastes selected notes, lyrics or mixed content while preserving relative spacing and internal links. Delete removes the selection. Esc clears it. Paste-overwrite is an explicit option; inspect the destination before applying it.
+
+The Clip clipboard beside Paste holds up to 20 clips. Select one or more notes and choose Save selection. You can name and audition each clip. The selected clip appears as a numbered-note strip below the picker. Scroll sideways to see longer clips. To fix a repeated phrase, select the target notes and choose Paste pitches only. The same number of pitched notes is required, in time order; the target rhythm, lyrics and markings are preserved. Paste clip uses the selected beat and preserves the source timing, gaps and jointly selected lyrics. Use for Ctrl+V makes the clip the current clipboard content. Clips are shared by both notation views and projects opened in the same page, and clear when the page reloads or closes.
+
+Ctrl+Z undoes. Ctrl+Y or Ctrl+Shift+Z redoes. Space plays or pauses; S splits; M merges consecutive selected notes; V marks a note reviewed; L opens lyric-based note splitting. Shortcuts are context dependent and do not replace normal text input.
+
+The shortcut panel has a local enable switch. Ctrl+Alt+K toggles it. Turning shortcuts off does not disable buttons, ordinary text entry or Ctrl/Shift mouse selection.
+
+13. Splitting sustained notes with lyrics
+
+After adopting and checking timed lyrics, select sustained notes and preview splitting at word boundaries. The split keeps the original pitch for every resulting note. It does not infer different sung pitches and does not run a model.
+
+Review the preview and confirm once. Then listen and correct individual pitches. One Undo restores the original notes, lyric associations and selection. Unselected notes remain unchanged. Word-splitting and note-splitting tools operate on different data.
+
+14. Linked movement of notes and lyrics
+
+Linked editing is off by default. First check note-word associations against the original recording. When enabled, moving an associated note or word moves its whole linked group. Groups can include one word over multiple notes or several words over one note.
+
+Linked editing synchronizes movement only. Stretching a note changes only that note; stretching a lyric changes only that lyric. Turn linkage off for independent alignment. An invalid group move should fail as a whole rather than partially move linked items.
+
+15. Clearing pending candidates and loaded audio
+
+Deleting pending candidates clears their browser recovery entry; it does not delete the working score, original recording or disk files. Closing or collapsing a candidate window keeps it available to reopen.
+
+Unloading original audio removes the loaded audio and stems while retaining notes, lyrics and pending candidates. It does not delete your local recordings. Review the clear-data description before confirming a browser cleanup.
+
+16. Intuitive pitch selection
+
+Use 1 Do, 2 Re, 3 Mi, 4 Fa, 5 Sol, 6 La, 7 Si and 0 Rest. Degrees are interpreted in the notation key at that score position. The displayed octave dots and text help identify the register.
+
+Lower/Higher adjusts one semitone; octave controls adjust 12 semitones. Rests have no pitch to raise or lower. Professional pitch selection remains available as note names and MIDI numbers; both selectors refer to the same actual value.
+
+Single-note edits apply directly. Insertion, batch replacement and merging retain their own confirmation buttons. Invalid out-of-range pitches cannot be submitted.
+
+17. Continuous note entry and advanced text input
+
+Open Continuous note entry under the title in the right sidebar. Set a start beat, register, accidental and duration, then click degree buttons to build a queue. Available durations include 1/16, 1/8, 1/4, half, one, two and four beats, with exact numeric entry.
+
+Click a queued item to change it, delete that item, remove the last item or clear the queue. Changing an item's duration shifts later queued items, not the working score. Inspect total beats, range and approximate duration; preview the sequence before writing it.
+
+A nonempty queue keeps its destination fixed. Seeking playback or selecting another note does not silently relocate it. Change start explicitly or use Take playback position / Take selected start. Existing queued actual pitches remain unchanged when the destination changes.
+
+Write once commits at most 64 beats. Existing notes require overwrite confirmation. Range-external note fragments and lyric text are retained; invalid links become unassociated. Rests deliberately leave gaps. Later formal notes are not pushed forward. Undo restores the edit and selection together.
+
+An uncommitted queue does not change the project. Handle it before switching projects or importing another song. Advanced text input remains available in this panel. Its syntax is 1:1 2:0.5 #4:0.5 0:1, where the colon introduces duration; 0 leaves a rest, and apostrophes/commas indicate octave changes.
+
+18. Box selection, group editing and beat position
+
+F toggles box selection. The rectangle includes notes and lyrics. Mixed copy, cut, paste, deletion and dragging operate on the selected group and preserve valid internal associations. Use Undo to restore a group operation in one step.
+
+With box selection disabled, drag empty score space to scrub the vertical cursor. Clicking inside a note selects it and positions that cursor, enabling a precise split. The live beat position provides a numerical reference; it is distinct from original-audio seconds.
+
+19. Candidate note selection and repeated listening
+
+Click a candidate note to choose the resume position. Candidate notes are previews, so edit them after adopting into the workspace. Resize cursors have no purpose in the preview.
+
+Set the listening start with the section playback slider. Return to start jumps back there and resumes if already playing.
+
+Previous page and Next page browse the section in pages of about 20 seconds. Turning a page leaves playback and the listening start in place. Resume follow in the playback bar jumps to the current playback page and resumes following. Changing sections or moving the playback slider opens the page containing the new listening start.
+
+20. Feedback and runtime reports
+
+Open Feedback to describe the problem, reproduction steps and expected result. Inspect and edit the prepared preview before sharing it. You may choose whether to include diagnostic logs, copy the report or download TXT.
+
+Open email requests your mail app with goldotto@proton.me as the recipient and a short subject/summary. It does not attach files automatically and does not prove delivery. Attach or paste the full report yourself, then send in your own mail software. If no app opens, copy the address and report into webmail.
+
+Reports should omit credentials, complete private paths, songs, projects, lyrics and screenshots by default. Original errors may remain in their original language to aid diagnosis. Only attach personal material deliberately. The program stores no email password and does not send reports automatically.
+
+21. Score timbres and bundled samples
+
+Choose a score timbre in the listening bar. Lightweight synthesized styles and piano, nylon-string guitar, violin and flute samples are provided for score preview and WAV rendering. These affect the working score, candidate, individual-note and queued-sequence playback, not original audio or stems.
+
+The selection is a local preference rather than project data. Switching during playback retains position and releases old voices. Sample resources load as needed and fall back to a lightweight timbre when unavailable. FluidR3 / midi-js-soundfonts sampling resources retain their attribution and CC BY 3.0 license.
+
+22. Formal numbered-notation layout
+
+Choose Formal numbered-notation layout in Export to open a separate wide layout editor. It reads a snapshot of the working score, not an unadopted candidate. Reload workspace explicitly to take newer edits; background changes do not silently replace the export copy.
+
+The default is the whole score on portrait A4, black on white, normally four bars per row with fewer bars when dense. Adjust range, title, meter, key, tempo, font size, margins and lyric visibility. These settings operate on the export copy, not working-note timing or alignment points.
+
+Compare original timing with cleaned timing. The default grid is a quarter of a beat; you can retain original values or choose a finer or coarser supported grid. Cleaning keeps note order and count. Overlapping or zero-duration results must be rejected rather than silently dropping notes; select a finer grid or keep original timing.
+
+The layout uses numbered pitches, octave dots, accidentals, duration lines, dots, rests and bar lines. Sustained notes crossing bars are split for notation with ties. Complete rows move between pages, avoiding clipped fragments. Dense bars need more width and may occupy a row alone.
+
+Existing lyric associations are reused. A word spanning several notes appears at the first note. Unassociated words appear in the layout checks rather than being guessed into positions. This first layout targets single melodies and supported binary durations, not new polyphonic or triplet editing.
+
+Preview and export share the layout result. Print or Save as PDF uses the system print dialog; SVG exports the whole score. Choose an export filename. The output omits editing controls, selection highlights and review colours. Optional layout settings can be saved in projects; older projects use defaults.
+
+23. Staff notation and project links
+
+Choose Staff under Notation mode to open the same project as staff notation. Select a note to seek. When paused, this also plays a short note preview. When playing, playback continues from the selected position. Use the semitone buttons, note-value menu, or precise beat input to edit. Duration changes keep the onset fixed and stop if the next note would overlap. Both views share playback, selection, and undo history, and remember their own scroll positions.
+
+The top GitHub button opens https://github.com/goldotto/NoteMender in a new tab. Open-source credits list official third-party projects and license sources; the licenses directory retains the bundled materials.
+
+24. Versions and updates
+
+The update centre displays program version, build number, release notes and local update history. Automatic checks run at startup and every six hours when enabled; downloading and installing require your action. A network failure must not be reported as already up to date.
+
+Version identity includes both version and build number, so builds can differ even when the version number is the same. Only verified signed update information is offered as trusted. Last successful information can be read offline with its retrieval time; it is not a live check.
+
+Program updates replace program files, not the large model environments or personal projects. Save all editing sessions, candidates, lyric results and uncommitted entry queues before restarting. Active tasks or unconfirmed browser sessions can block installation. Source-development directories cannot be overwritten as ordinary installations.
+
+The updater records success, failure and rollback where applicable. A first online update also depends on an actually published signed update and valid installation credentials. Use the manual download route if this installation cannot update itself. Never treat opening a download page as proof of a successful installation.
+
+27. Floating score preview
+Open Score preview in the center of the top navigation for a read-only floating window. Drag the title to move it and the bottom-right corner to resize it. Double-click the title or use Maximize and Restore. Closing and reopening retains the window size and position for this session.
+The preview displays formatted notation, linked lyrics and existing vocal markings. Edit pitches, durations and lyrics in the main workspace. The open preview refreshes automatically. Original timing is the default. Choose a preview grid when irregular boundaries prevent engraving. This affects only the preview and export copy.
+Click ScoreDesk in the top navigation to open the entire workspace score and its displayed lyrics in a new tab. To include the loaded original audio and its alignment, choose Export score → Send to ScoreDesk. If ScoreDesk cannot open directly, open the downloaded .scoredesk project manually. Edit and export the finished score in ScoreDesk.
+
+Export for Dolce (MusicXML) downloads a score to open and edit in Dolce. It carries absolute pitches, meter, keys, tempo, rhythm, linked lyrics and existing vocal markings. Sustained notes use ties across bars. A melisma prints its lyric on the first note.
+Use MusicXML to hand off notation and JSON to save the NoteMender project. Save subsequent Dolce edits in Dolce.
+SVG exports all pages. Print / PDF uses system printing. Fonts and layout resources are bundled for offline use. The staff workspace offers independent zoom, automatic or manual clef, MusicXML export, and A4 printing or PDF. It reads any valid pickup saved in the project layout settings. Older projects without a pickup start with a full measure.
+
+28. Auto tidy score (trial)
+In Score preview, choose Auto tidy score and compare Original timing, Auto tidy and Grid cleanup. Formal score layout has the same action and a Beat grouping option. Timing changes affect the presentation and export copy. Workspace notes, lyrics and audio alignment points remain available in the project.
+Auto tidy prefers readable binary rhythms within a maximum movement of 1/8 quarter-note beat per boundary. It preserves note count and order, including short notes. Unsupported boundaries or overlaps block engraving for correction. The result still needs musical review.
+Close gaps <=1/8 beat is off by default and applies only to Auto tidy. It extends the preceding sounded note to close a small gap before the next sounded note. Explicit rests and larger gaps remain. This extension is included in the reported maximum shift. Check intentional breathing gaps before export.
+Pickup beats sets the length of the first, incomplete measure. Use 0 for a full first bar or 1 for a one-quarter-note pickup. Subsequent bars use the full meter. Units match the workspace, so a complete 6/8 bar has 3 quarter-note beats. The pickup must be shorter than a full bar.
+Beat grouping separates short-note beams by beat, with two dotted-quarter groups in 6/8. Off-beat sustained notes can split at beat boundaries using ties. Original note IDs and total duration remain represented. MusicXML uses the same prepared notes and pickup length.
+Auto tidy alone does not detect downbeats from audio or infer a pickup. Check tempo and the first measure before choosing a cleanup result. Repeated notes, ornaments and melody selection still require review in the workspace.
+
+29. Bar lines and workspace markers
+Score preview uses the project meter and pickup. Audio-based bar suggestions (Beat This!), tap recording and workspace bar markers are currently paused.
+
+Workspace markers: Choose Add marker in the playback bar, or press B, to mark the playhead. Expand Markers to jump, rename, move or delete a marker, or select any two markers as A and B for loop playback. Use as entry beat fills the insertion and paste positions on the 1/16-beat editing grid. Markers follow original audio time when a source recording exists and score beats in score-only projects. The project saves markers and supports undo.

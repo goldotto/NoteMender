@@ -1,0 +1,38 @@
+Dolce engraving engine
+Copyright (c) 2026 lodebar2026. MIT license, preserved in Dolce-LICENSE.txt.
+Upstream https://github.com/lodebar2026/dolce
+Pinned commit 6b1d3fc663f25e00eee64a99f614ce4b5ac9666c
+
+NoteMender bundles selected browser engraving modules in public/vendor/dolce.js.
+The upstream renderer is bundled without source modifications. NoteMender's
+adapter projects its own note identities, pitches, lyrics and performance
+markings into a disposable Dolce document. NoteMender remains the editor and
+project authority. No remote editor, OCR model or online service is required.
+
+Rebuilding the checked-in bundle is an explicit maintainer action. Check out
+the pinned upstream commit, install NoteMender's normal build dependencies,
+then run node scripts/build-dolce.mjs <path-to-pinned-checkout> from the project
+root. Normal offline builds use the checked-in bundle and require no checkout.
+Review upstream changes and licenses before changing the pinned revision.
+
+SHA-256 public/vendor/dolce.js
+95f909355f6614bc5d1190bec201b9f5a5da7e0950bc3267664c4d31b4902773
+
+Bravura music font
+Copyright Steinberg Media Technologies GmbH. SIL Open Font License 1.1,
+preserved in Bravura-OFL.txt. Reserved Font Name Bravura.
+Official font project https://github.com/steinbergmedia/bravura
+Unmodified font and SMuFL metadata copied from the pinned Dolce commit's
+public/redist directory. Font family and source attribution are retained.
+
+SHA-256 public/vendor/Bravura.woff2
+74db0954f199400329feef82477fce8ee3947bba2577c7f7ff7dcd081cb3d6f9
+SHA-256 public/vendor/bravura_metadata.json
+6483b51b4b7355869dc40e39c8f1687bf0b9810e7ad409aa234295fa20d998c1
+
+Dolce was selected for its browser SVG engraving, note identity mapping,
+numbered notation, lyrics and performance marks. Sparks NMN was also reviewed
+(Apache-2.0, https://github.com/yezhiyi9670/sparks-notation-1). Dolce's selected
+renderer fitted the existing note-ID based editing flow. jianpu-ly was reviewed
+as a LilyPond-backed offline publishing tool rather than a browser editor.
+These alternatives are not bundled.

@@ -26,7 +26,19 @@ export function muscriptorService(root,{spawnImpl=spawn,beforeStart=async()=>{},
     if(req.headers['x-studio-token']!==token){send(403,{error:'会话已过期，请刷新'});return true;}
     if(url.pathname==='/api/muscriptor/status'&&req.method==='GET'){send(200,{variant:'large',job:current});return true;}
     const saved=/^\/api\/muscriptor\/result\/([a-f0-9]{64})\/(midi|json)$/.exec(url.pathname);
-    if(saved&&req.method==='GET'){try{send(200,await readFile(path.join(cache,saved[1]+(saved[2]==='midi'?'.mid':'.json'))),saved[2]==='midi'?'audio/midi':'application/json; charset=utf-8');}catch{send(404,{error:'原始结果已清理，请重新分析；已保存的简谱候选不受影响'});}return true;}
+    if(saved&&['GET','HEAD'].includes(req.method)){
+      const midi=saved[2]==='midi',file=path.join(cache,saved[1]+(midi?'.mid':'.json'));
+      try{
+        let body;
+        if(req.method==='HEAD'){
+          const info=await stat(file);
+          if(!info.isFile()||!info.size)throw Error('缓存文件为空或无效');
+          body='';
+        }else body=await readFile(file);
+        send(200,body,midi?'audio/midi':'application/json; charset=utf-8');
+      }catch{send(404,{error:'原始结果已清理，请重新分析；已保存的简谱候选不受影响'});}
+      return true;
+    }
     if(url.pathname!=='/api/muscriptor/analyse'||req.method!=='POST'){send(404,{error:'接口不存在'});return true;}
     if(current){send(409,{error:'已有 MuScriptor 分析运行中'});return true;}
     const controller=new AbortController(),signal=controller.signal;let temp;current={stage:'准备 MuScriptor large',progress:0};

@@ -1,12 +1,14 @@
 import {EDIT_STEP,snap,uid,validateProject} from './music.mjs';
 import {lyricLabels,mapLyricIds} from './lyrics.mjs';
 
-export function copyNotes(project,ids){
+export function copyNotes(project,ids,{includeLyrics=true}={}){
   const chosen=new Set(ids),notes=project.notes.filter(note=>chosen.has(note.id));
   if(!notes.length)throw Error('请先选中要复制的音符');
   const first=notes[0].start,last=Math.max(...notes.map(note=>note.start+note.duration));
-  const labels=lyricLabels(project);
-  return {span:last-first,notes:notes.map(({id,start,duration,midi,confidence,reviewStatus,lyric})=>({start:start-first,duration,midi,confidence,reviewStatus,lyric:lyric||((labels.get(id)||'').replaceAll('—',''))}))};
+  const labels=includeLyrics?lyricLabels(project):null;
+  const index=new Map(notes.map((note,i)=>[note.id,i]));
+  const slurs=(project.vocalSlurs||[]).filter(s=>index.has(s.start)&&index.has(s.end)).map(s=>({start:index.get(s.start),end:index.get(s.end)}));
+  return {span:last-first,...(slurs.length?{vocalSlurs:slurs}:{}),notes:notes.map(({id,start,duration,midi,confidence,reviewStatus,lyric,vocal})=>({start:start-first,duration,midi,confidence,reviewStatus,...(vocal?{vocal:{...vocal}}:{}),lyric:labels?(lyric||((labels.get(id)||'').replaceAll('—',''))):''}))};
 }
 
 export function pasteNotes(project,clipboard,start,{overwrite=false}={}){
@@ -23,7 +25,8 @@ export function pasteNotes(project,clipboard,start,{overwrite=false}={}){
     if(note.start+note.duration>end+1e-6)retained.push({...note,id:uid(),start:end,duration:note.start+note.duration-end,lyric:''});
   }
   const pasted=clipboard.notes.map(note=>({...note,id:uid(),start:start+note.start,reviewStatus:'reviewed'}));
-  return {project:validateProject({...project,notes:[...retained,...pasted]}),ids:pasted.map(note=>note.id)};
+  const slurs=(clipboard.vocalSlurs||[]).filter(s=>pasted[s.start]&&pasted[s.end]).map(s=>({start:pasted[s.start].id,end:pasted[s.end].id}));
+  return {project:validateProject({...project,...(slurs.length?{vocalSlurs:[...(project.vocalSlurs||[]),...slurs]}:{}),notes:[...retained,...pasted]}),ids:pasted.map(note=>note.id)};
 }
 
 export function splitNoteAt(project,id,beat){

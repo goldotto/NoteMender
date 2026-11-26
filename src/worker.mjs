@@ -1,8 +1,8 @@
 import {BasicPitch,outputToNotesPoly,noteFramesToTime} from '@spotify/basic-pitch';
 import * as tf from '@tensorflow/tfjs';
-import {detectMonophonic,estimateTempo} from './transcription.mjs';
+import {estimateTempo} from './transcription.mjs';
 import {legacyResult} from './legacy-evidence.mjs';
-import {detectMonophonicV2} from './transcription-v2.mjs';
+import {energyProfile} from './transcription-v2.mjs';
 import {processEvidence} from '../public/recognition-v2.mjs';
 import {nativeBasic} from './basic-native.mjs';
 import {EVIDENCE_VERSION} from '../public/recognition-evidence.mjs';
@@ -12,17 +12,13 @@ self.onmessage=async({data})=>{
   const progress=(value,stage)=>self.postMessage({type:'progress',value,stage});
   try{
     if(engine==='tempo'){self.postMessage({type:'tempo',bpm:estimateTempo(samples)});return;}
+    if(!['basic','adaptive','instrumental'].includes(engine))throw Error('该识别方式已停用，请选择自动或 Basic Pitch');
     let notes=[],computeRecords=[];
     const native=options?.execution?.basicBackend?.startsWith("onnx-");
     const improved=options?.pipeline&&options.pipeline!=='legacy',cached=options?.rawEvidence;
-    if(improved&&cached){progress(.95,'复用原始分析，重新筛选候选');const raw={...cached,...(options.externalEvidence||{})};self.postMessage({type:'result',...processEvidence(raw,samples,engine==='pitchy'?{...options,analysisMode:'solo'}:options),rawEvidence:raw,cacheHit:true});return;}
+    if(improved&&cached){progress(.95,'复用原始分析，重新筛选候选');const raw={...cached,rawMono:[],pitchFrames:[],...(options.externalEvidence||{})};self.postMessage({type:'result',...processEvidence(raw,samples,options),rawEvidence:raw,cacheHit:true});return;}
     if(!improved&&cached){self.postMessage({type:'result',...legacyResult(cached,samples,engine,options),cacheHit:true});return;}
-    if(improved&&engine==='pitchy'){
-      const pitch=detectMonophonicV2(samples,22050,options),raw={version:EVIDENCE_VERSION,rawBasic:[],pitchFrames:pitch.frames,onsets:pitch.onsets,...(options.externalEvidence||{})};
-      self.postMessage({type:'result',...processEvidence(raw,samples,{...options,analysisMode:'solo'}),rawEvidence:raw});return;
-    }
-    if(engine==='pitchy'){progress(0,'Pitchy 单音检测');const raw={version:EVIDENCE_VERSION,rawBasic:[],rawMono:detectMonophonic(samples,22050,options,p=>progress(p,'Pitchy 单音检测')),pitchFrames:[]};self.postMessage({type:'result',...legacyResult(raw,samples,engine,options)});return;}
-    else {
+    {
       const adaptive=engine==='adaptive',instrumental=engine==='instrumental'||(adaptive&&options.source!=='vocals');
       progress(0,'加载本地 Basic Pitch 模型');
       if(!native){await tf.setBackend('cpu');await tf.ready();
@@ -41,12 +37,11 @@ self.onmessage=async({data})=>{
         }finally{tf.engine().endScope();}
       }
       if(improved){
-        const pitch=detectMonophonicV2(samples,22050,options),raw={version:EVIDENCE_VERSION,compute:{backend:computeRecords.at(-1)?.backend||'tfjs-cpu',fingerprint:computeRecords.at(-1)?.fingerprint||options?.execution?.basicFingerprint,records:computeRecords},rawBasic:notes,pitchFrames:pitch.frames,onsets:pitch.onsets,...(options.externalEvidence||{})};
+        const energy=energyProfile(samples,22050),raw={version:EVIDENCE_VERSION,compute:{backend:computeRecords.at(-1)?.backend||'tfjs-cpu',fingerprint:computeRecords.at(-1)?.fingerprint||options?.execution?.basicFingerprint,records:computeRecords},rawBasic:notes,pitchFrames:[],onsets:energy.onsets,...(options.externalEvidence||{})};
         self.postMessage({type:'result',...processEvidence(raw,samples,options),rawEvidence:raw});return;
       }
-      const raw={version:EVIDENCE_VERSION,compute:{backend:computeRecords.at(-1)?.backend||'tfjs-cpu',fingerprint:computeRecords.at(-1)?.fingerprint||options?.execution?.basicFingerprint,records:computeRecords},rawBasic:notes,rawMono:detectMonophonic(samples,22050,!adaptive&&instrumental?{...options,threshold:.82}:options),pitchFrames:[]};
+      const raw={version:EVIDENCE_VERSION,compute:{backend:computeRecords.at(-1)?.backend||'tfjs-cpu',fingerprint:computeRecords.at(-1)?.fingerprint||options?.execution?.basicFingerprint,records:computeRecords},rawBasic:notes,rawMono:[],pitchFrames:[]};
       self.postMessage({type:'result',...legacyResult(raw,samples,engine,options)});return;
     }
-    self.postMessage({type:'result',notes});
   }catch(error){self.postMessage({type:'error',message:error.message||'本地转录失败'});}
 };

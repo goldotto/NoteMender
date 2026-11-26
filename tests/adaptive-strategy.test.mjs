@@ -21,7 +21,7 @@ test('automatic selection favors vocals and routes clear solo separately from ch
   assert.equal(chooseAnalysisMode({requested:'dense',source:'vocals',basic:solo,mono,windowSeconds:8}),'dense');
 });
 
-test('vocal disagreement remains a reviewable note and pitchy fills uncovered sound',()=>{
+test('vocal disagreement remains a reviewable note and external pitch evidence fills uncovered sound',()=>{
   const samples=new Float32Array(22050*2).fill(.1);
   const basic=[{start:0,end:.5,midi:60,confidence:.6}],mono=[{start:0,end:.5,midi:72,confidence:.9},{start:1,end:1.5,midi:62,confidence:.9}];
   const fused=fuseVocalCandidates(basic,mono,samples);

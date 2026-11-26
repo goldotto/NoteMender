@@ -1,0 +1,10 @@
+ScoreDesk · 改谱台
+基于 Dolce 0.8.8（defb7594b00a42cda8030cdf68baa61e3b562b72）。
+Dolce 版权所有 lodebar2026，采用 MIT 许可，见 LICENSE-Dolce.txt（源码 LICENSE）。
+
+Bravura / Bravura Text © Steinberg Media Technologies GmbH
+SIL Open Font License 1.1，见 LICENSE-Bravura.txt。
+https://github.com/steinbergmedia/bravura
+
+FluidR3 General MIDI 预渲染钢琴采样及署名见 redist/soundfont/LICENSE.txt。
+

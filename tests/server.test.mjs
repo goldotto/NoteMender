@@ -1,5 +1,8 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {createApp} from '../server.mjs';import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {tmpdir} from 'node:os';import path from 'node:path';
-async function serve(fn,options={}){const app=createApp(options);await new Promise(r=>app.listen(0,'127.0.0.1',r));try{await fn(`http://127.0.0.1:${app.address().port}`);}finally{await new Promise(r=>app.close(r));}}
+import test from 'node:test';import assert from 'node:assert/strict';import {createApp} from '../server.mjs';import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import path from 'node:path';
+// Every server instance gets a throwaway analysis root and export directory, so a
+// test run can never append to the real runtime log or exports folder. Both are
+// removed only after the diagnostics queue has flushed its final service.stop event.
+async function serve(fn,options={}){const directory=mkdtempSync(path.join(tmpdir(),'nm-test-'));const app=createApp({analysisRoot:directory,exportDirectory:path.join(directory,'exports'),...options});await new Promise(r=>app.listen(0,'127.0.0.1',r));try{await fn(`http://127.0.0.1:${app.address().port}`);}finally{await new Promise(r=>app.close(r));await app.diagnostics.close();rmSync(directory,{recursive:true,force:true});}}
 test('serves local UI, prevents cross-origin and unauthenticated mutations',()=>serve(async base=>{
  assert.equal((await fetch(base)).status,200);
  assert.equal((await fetch(base+'/api/status',{headers:{origin:'https://evil.example'}})).status,403);

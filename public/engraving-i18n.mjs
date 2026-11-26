@@ -1,0 +1,12 @@
+export const ENGRAVING_EN={
+  '自动整理成谱':'Auto tidy','自动节奏整理':'Automatic rhythm cleanup','合并 ≤⅛ 拍音间空隙':'Close gaps ≤⅛ beat','按拍分组':'Group by beat','首小节拍数':'Pickup beats','0 为完整小节；弱起请填首小节实际拍数。':'Use 0 for a full first bar. For a pickup, enter its actual length.',
+  '正式简谱排版':'Print-ready numbered notation','工作区副本 · 预览后导出':'Workspace copy · Preview before export','关闭排版':'Close layout','关闭':'Close','重新读取工作区':'Reload from workspace','导出范围':'Export range','曲名':'Title','导出文件名':'Export filename','拍号':'Time signature','速度 ♩':'Tempo ♩','记谱调号':'Notation key','跟随工程（含段落调号）':'Follow project (including section keys)','节奏整理精度':'Rhythm cleanup grid','¼ 拍 · 默认':'¼ beat · Default','½ 拍':'½ beat','⅛ 拍':'⅛ beat','¹⁄₁₆ 拍':'¹⁄₁₆ beat','保留原时值':'Keep original timing','字号':'Font size','每行最多小节':'Maximum bars per system','页边距 / 毫米':'Margins / mm','显示已关联歌词':'Show linked lyrics','偏好降号':'Prefer flats',
+  'A4 竖向。密集小节自动减少每行数量，过长小节按音符换行。整理只影响此副本。':'A4 portrait. Dense bars reduce the bars per system; very long bars wrap between notes. Cleanup affects only this copy.',
+  '保存排版设置到工程':'Save layout settings to project','查看节奏变化':'Review rhythm changes','歌词与范围检查':'Lyrics and range checks','对照':'Compare','整理后':'Cleaned up','原时值':'Original timing','预览与导出使用同一份排版。':'Preview and export use the same layout.','下载整谱 SVG':'Download full score SVG','打印 / 另存 PDF':'Print / Save as PDF',
+  '请调整设置后再导出。':'Adjust the settings before exporting.','整首工作区':'Entire workspace','未命名':'Untitled',' - 简谱':' - Numbered score',
+  '重新读取当前工作区，并重置本窗口尚未保存的排版设置？':'Reload the current workspace and reset unsaved layout settings in this window?',
+  '排版设置已写入工程，可撤销；正式音符未改变。':'Layout settings saved to the project (undo available). Workspace notes are unchanged.','请允许弹出打印窗口后重试。':'Allow the print popup and try again.',
+  '五线谱模式框架':'Staff notation framework','五线谱模式':'Staff notation','框架建设中':'Framework under development','这里预留五线谱的独立制作界面。当前先收集记谱方式和操作建议。':'This is a placeholder for a dedicated staff notation workspace. We are gathering feedback on notation and editing workflows.',
+  '读取现有单旋律音符、歌词和段落调号。':'Read existing single-melody notes, lyrics and section keys.','补充谱号、调式、节奏拼写、连线及分页规则。':'Define clefs, key signatures, rhythmic spelling, ties, slurs and pagination.','设计音符选择、修改、试听及简谱之间的对应。':'Design note selection, editing, playback and mapping to numbered notation.',
+  '欢迎提供示例谱面和制作方法，帮助确定后续实现。':'Share example scores and suggested workflows to help shape the implementation.','提交五线谱建议 ↗':'Suggest staff notation improvements ↗','返回简谱工作区':'Return to numbered notation',
+};

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="zh-CN" data-ui-lang="zh">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#eeece6">
+  <title>改谱台 · ScoreDesk</title>
+  <link rel="icon" href="data:,">
+  <script type="module" crossorigin src="./assets/index-uucwspeQ.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-DixyYKAe.css">
+</head>
+<body>
+  <main id="app" class="desk">
+    <header class="desk-header">
+      <div class="file-tools" aria-label="工程">
+        <div class="desk-name" title="改谱台"><span class="desk-emblem" aria-hidden="true">♩</span><strong>改谱台</strong></div>
+        <span id="project-name">未命名</span>
+        <a id="back-to-notemender" href="/" hidden>返回 NoteMender</a>
+        <div class="tool-group">
+          <button id="new-score">新建</button><button id="open-score">打开</button><button id="save-project" title="保存工程">保存</button>
+        </div>
+      </div>
+      <nav class="desk-tools" aria-label="试听工具">
+        <div class="tool-group playback-tools">
+          <button id="restart" class="icon-button" aria-label="回试听起点" title="回到 A 点或试听起点"><span aria-hidden="true">↤</span></button>
+          <button id="play" class="primary" title="空格播放或暂停">▶ 播放</button>
+          <button id="loop" aria-pressed="false" title="循环试听 A、B 之间的乐谱">循环</button>
+        </div>
+        <div class="transport-progress">
+          <output id="play-time" aria-label="当前播放时间">00:00.0</output>
+          <input id="transport-seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="试听进度">
+          <output id="play-length" aria-label="试听总时长">00:00.0</output>
+        </div>
+        <div class="tool-group playback-options">
+          <select id="source" aria-label="试听来源"><option value="score">谱子</option><option value="original">原曲</option></select>
+          <select id="play-rate" aria-label="试听倍速">
+            <option value="0.5">0.5×</option><option value="0.6">0.6×</option><option value="0.75">0.75×</option><option value="0.9">0.9×</option>
+            <option value="1" selected>1×</option><option value="1.1">1.1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option>
+          </select>
+          <button id="metronome" class="icon-button" aria-label="节拍器" aria-pressed="false" title="谱子试听时按谱面拍子打拍"><span aria-hidden="true">♩</span></button>
+        </div>
+      </nav>
+      <div class="desk-actions" aria-label="视图、历史和导出">
+        <div class="view-switch" role="group" aria-label="谱面视图">
+          <button id="view-page" aria-pressed="true">页面</button><button id="view-scroll" aria-pressed="false">卷轴</button>
+        </div>
+        <div class="tool-group">
+          <button id="undo" class="icon-button" aria-label="撤销" title="撤销（Ctrl+Z）"><span aria-hidden="true">↶</span></button>
+          <button id="redo" class="icon-button" aria-label="重做" title="重做（Ctrl+Shift+Z）"><span aria-hidden="true">↷</span></button>
+        </div>
+        <button id="ai-open" aria-controls="ai-panel" aria-expanded="false">AI 改谱</button>
+        <button id="export-btn" class="primary">导出 <span aria-hidden="true">↗</span></button>
+      </div>
+    </header>
+    <div class="desk-body">
+      <aside id="ai-panel" aria-labelledby="ai-panel-title" hidden>
+        <header class="ai-head"><strong id="ai-panel-title">AI 改谱</strong><button id="ai-close" class="icon-button" aria-label="关闭 AI 改谱">×</button></header>
+        <div class="ai-content">
+          <details id="ai-settings">
+            <summary>模型与 API 设置</summary>
+            <label class="ai-field">服务和模型
+              <select id="ai-provider">
+                <option value="flash">小米 MiMo‑V2.6‑Flash</option>
+                <option value="pro">小米 MiMo‑V2.6‑Pro</option>
+                <option value="custom">自定义（OpenAI 兼容）</option>
+              </select>
+            </label>
+            <div id="ai-custom" hidden>
+              <label class="ai-field">API 地址 <input id="ai-endpoint" type="url" placeholder="http://127.0.0.1:8000/v1" autocomplete="off" spellcheck="false"></label>
+              <label class="ai-field">模型名 <input id="ai-model" type="text" maxlength="150" autocomplete="off" spellcheck="false"></label>
+            </div>
+            <label class="ai-field">API Key <input id="ai-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false"></label>
+            <div class="ai-controls">
+              <label><input id="ai-remember" type="checkbox">记住密钥</label>
+              <button id="ai-forget" type="button" disabled>清除密钥</button>
+              <button id="ai-test" type="button">测试连接</button>
+            </div>
+            <small id="ai-key-status">密钥默认只保留在当前页面。</small>
+          </details>
+          <label class="ai-field">改谱范围
+            <select id="ai-scope">
+              <option value="selection">仅选中音符</option>
+              <option value="measure">当前小节</option>
+              <option value="range">指定小节和声部</option>
+            </select>
+          </label>
+          <div id="ai-range" class="ai-range" hidden>
+            <label class="ai-field">起始小节 <input id="ai-from" type="number" min="1" step="1" value="1"></label>
+            <label class="ai-field">结束小节 <input id="ai-to" type="number" min="1" step="1" value="1"></label>
+            <label class="ai-field">乐器／分谱 <select id="ai-part"><option value="">全部</option></select></label>
+            <label class="ai-field">声部 <select id="ai-voice"><option value="">全部</option></select></label>
+          </div>
+          <div class="ai-controls" role="group" aria-label="本地改谱预设">
+            <button type="button" data-ai-preset="范围内所有音符升八度">升八度</button>
+            <button type="button" data-ai-preset="范围内所有音符降半音">降半音</button>
+            <button type="button" data-ai-preset="范围内所有音符改成八分音符">八分音符</button>
+            <button type="button" data-ai-preset="最后一个音加换气记号">尾音换气</button>
+          </div>
+          <label class="ai-field">改谱指令
+            <textarea id="ai-prompt" rows="3" maxlength="2000" placeholder="例如：把这一小节的最后一个音升高半音，力度标为 mf。"></textarea>
+          </label>
+          <p id="ai-destination" class="ai-target"></p>
+          <p id="ai-share" class="ai-target"></p>
+          <div class="ai-controls">
+            <button id="ai-propose" type="button" class="primary">生成改动预览</button>
+            <button id="ai-cancel" type="button" hidden>取消请求</button>
+          </div>
+          <p id="ai-status" role="status" aria-live="polite"></p>
+          <div id="ai-preview" hidden>
+            <ol id="ai-changes" aria-label="改动前后"></ol>
+            <button id="ai-apply" type="button" class="primary">确认写入</button>
+          </div>
+        </div>
+      </aside>
+      <aside id="editor-tools" class="desk-sidebar" aria-label="谱面编辑工具">
+        <header class="sidebar-head"><strong>谱面工具</strong><button id="close-editor" class="icon-button drawer-close" aria-label="收起编辑工具">×</button></header>
+        <section>
+          <h2>音符与时值</h2>
+          <div id="degrees" aria-label="唱名"></div>
+          <div id="duration-tools" aria-label="固定时值"></div>
+          <div class="grid" id="note-tools">
+            <button data-action="dur.halve" title="减半时值（_）">减半</button>
+            <button data-action="dur.double" title="加倍时值（=）">加倍</button>
+            <button data-action="dur.dot" title="切换附点（.）">附点</button>
+            <button id="insert" data-action="mode.insert" aria-pressed="false">插音</button>
+            <button id="delete-note" data-action="del.forward" disabled>删除音</button>
+          </div>
+          <span id="visual-mode" hidden></span>
+        </section>
+        <section>
+          <h2>音高</h2>
+          <div class="grid" id="pitch-tools">
+            <button data-action="semi.down" title="降低半音">降半音</button><button data-action="semi.up" title="升高半音">升半音</button>
+            <button data-action="oct.down">低八度</button><button data-action="oct.up">高八度</button>
+          </div>
+        </section>
+        <section>
+          <h2>歌词与演唱记号</h2>
+          <div class="grid">
+            <button data-action="lyric.entry">歌词</button><button data-action="chord.entry">和弦</button>
+            <button data-action="slur.toggle" title="按住 Shift 点结束音后使用">连音</button><button data-action="tie.toggle" title="为相邻同音添加延音线">延音线</button>
+            <button data-action="deco.breath">换气</button><button data-action="dyn.entry">力度</button><button data-action="deco.fermata">延长记号</button>
+          </div>
+        </section>
+        <section>
+          <h2>小节</h2>
+          <div class="grid">
+            <button id="edit-meter" data-action="meas.time" disabled>拍号</button><button id="edit-tempo" data-action="meas.tempo" disabled>速度</button>
+            <button id="split-bar" data-action="bar.insert" disabled>拆分小节</button><button data-action="meas.insert">插小节</button>
+            <button data-action="meas.append">追加小节</button><button id="delete-bar" data-action="meas.delete" disabled>删小节</button>
+          </div>
+          <button id="btn-beat-check">检查拍数</button>
+          <button id="beat-count" title="定位下一处拍数问题" hidden></button>
+        </section>
+        <details class="editor-more">
+          <summary>五线谱与复调</summary>
+          <div id="letters" aria-label="绝对音名"></div>
+          <div class="grid">
+            <button data-action="acc.flat">♭ 降号</button><button data-action="acc.natural">♮ 还原</button><button data-action="acc.sharp">♯ 升号</button>
+            <button data-action="edit.transpose">移调</button>
+            <button data-action="meas.key">调号</button><button data-action="meas.clef">谱号</button>
+            <button data-action="chord.add" data-key="3">加三度音</button><button data-action="chord.add" data-key="5">加五度音</button>
+            <button data-action="voice.set" data-key="1" title="设定插音声线">输入声线 1</button><button data-action="voice.set" data-key="2" title="设定插音声线">输入声线 2</button>
+            <button data-action="voice.set" data-key="3" title="设定插音声线">输入声线 3</button><button data-action="voice.set" data-key="4" title="设定插音声线">输入声线 4</button>
+            <button id="move-staff-up" title="保持拍位移到同一乐器的上谱表">移到上谱表</button><button id="move-staff-down" title="保持拍位移到同一乐器的下谱表">移到下谱表</button>
+            <button data-action="tuplet.toggle">连音组</button><button data-action="grace.toggle">倚音</button>
+          </div>
+        </details>
+        <details class="editor-more">
+          <summary>奏法与表情</summary>
+          <div class="grid">
+            <button data-action="deco.staccato">断奏</button><button data-action="deco.tenuto">保持音</button>
+            <button data-action="deco.accent">重音</button><button data-action="deco.trill">颤音</button>
+            <button data-action="deco.mordent">波音</button><button data-action="deco.turn">回音</button>
+            <button data-action="wedge.cresc">渐强</button><button data-action="wedge.dim">渐弱</button>
+            <button data-action="ottava.up">高八度线</button><button data-action="ottava.down">低八度线</button>
+            <button data-action="text.entry">文字</button>
+          </div>
+        </details>
+        <details class="editor-more">
+          <summary>反复与跳转</summary>
+          <div class="grid">
+            <button data-action="bar.single">单小节线</button><button data-action="bar.double">双小节线</button><button data-action="bar.final">终止线</button>
+            <button data-action="bar.repeatStart">反复起点</button><button data-action="bar.repeatEnd">反复终点</button>
+            <button data-action="volta.1">房子 1</button><button data-action="volta.2">房子 2</button>
+            <button data-action="jump.segno">Segno</button><button data-action="jump.coda">Coda</button>
+            <button data-action="jump.dc">D.C.</button><button data-action="jump.ds">D.S.</button><button data-action="jump.fine">Fine</button>
+          </div>
+        </details>
+      </aside>
+      <div id="body" class="paper-workspace">
+        <section id="code-pane-shell" class="workspace-pane" hidden aria-label="乐谱源码"><div id="code-pane"></div></section>
+        <section id="score-pane-shell" class="workspace-pane" aria-label="乐谱工作区"><div id="score-pane" data-view="page" aria-label="乐谱"></div></section>
+      </div>
+      <aside id="inspector" class="desk-sidebar" aria-label="排版与对照">
+        <header class="sidebar-head">
+          <div class="view-switch" role="group" aria-label="侧栏内容">
+            <button id="layout-tab" aria-controls="layout-tools" aria-pressed="true">排版</button>
+            <button id="compare-tab" aria-controls="compare-tools" aria-pressed="false">对照</button>
+            <button id="parts-tab" aria-controls="parts-tools" aria-pressed="false">声部</button>
+          </div>
+          <button id="close-inspector" class="icon-button drawer-close" aria-label="收起排版与对照">×</button>
+        </header>
+        <div id="layout-tools">
+          <section>
+            <h2>纸张与字距</h2>
+            <label>排版预设 <select id="layout-preset">
+              <option value="">自定义</option><option value="standard">标准</option><option value="roomy">疏朗</option><option value="compact">紧凑</option>
+            </select></label>
+            <label>纸张 <select id="paper"><option>A4</option><option>A5</option><option>Letter</option></select></label>
+            <label>音符字号（pt） <input id="font-size" type="number" required min="10" max="36" step="0.5"></label>
+            <label>页边距（mm） <input id="margin" type="number" required min="6" max="35" step="1"></label>
+            <label title="五线谱由音符和歌词宽度自动换行">简谱每行小节 <select id="bars-per-line"></select></label>
+          </section>
+          <section>
+            <h2>谱面显示</h2>
+            <label>记谱方式 <select id="notation"><option value="original">简谱</option><option value="staff">五线谱</option><option value="mixed">简谱＋五线谱</option></select></label>
+            <label><span>歌词</span><input id="show-lyrics" type="checkbox" checked title="只影响工作区显示"></label>
+            <label><span>和弦</span><input id="show-chords" type="checkbox" checked title="只影响工作区显示"></label>
+          </section>
+        </div>
+        <div id="parts-tools" hidden>
+          <section>
+            <h2>声部显示</h2>
+            <label>谱面 <select id="score-part" disabled><option value="">总谱</option></select></label>
+            <button id="roll-toggle" aria-controls="roll-panel" aria-expanded="false">钢琴卷帘</button>
+          </section>
+          <section>
+            <h2>谱子试听混音</h2>
+            <div id="part-mixer"></div>
+          </section>
+        </div>
+        <div id="compare-tools" hidden>
+          <section>
+            <h2>试听范围</h2>
+            <div class="grid"><button id="mark-a" disabled>设起点 A</button><button id="mark-b" disabled>设终点 B</button></div>
+            <p id="loop-range">选两个谱面位置设定范围</p>
+            <button id="clear-ab" disabled>清除范围</button>
+          </section>
+          <section>
+            <h2>原曲对齐</h2>
+            <p id="selection">点选音符或小节线</p>
+            <div class="grid">
+              <button id="open-audio">载入原曲</button><button id="compare-wave" aria-controls="audio-panel" aria-expanded="false">打开波形</button>
+              <button id="add-anchor" disabled>添加对齐点</button><button id="show-anchors" disabled>对齐点 <span id="anchor-count">0</span></button>
+            </div>
+          </section>
+        </div>
+      </aside>
+    </div>
+    <section id="roll-panel" hidden aria-label="钢琴卷帘">
+      <div class="roll-head"><strong>钢琴卷帘</strong>
+        <select id="roll-layer" aria-label="卷帘内容" hidden><option value="score">记谱</option><option value="raw">原始 MIDI</option><option value="both">叠加对照</option></select>
+        <span id="roll-position"></span><button id="roll-close" aria-label="收起钢琴卷帘">收起</button></div>
+      <div id="roll-scroller" tabindex="0"><svg id="roll" role="group" aria-label="音符与小节"></svg></div>
+    </section>
+    <section id="audio-panel" hidden aria-label="原曲波形">
+      <div class="audio-heading">
+        <span id="audio-name">未载入</span>
+        <output id="audio-position" aria-label="波形位置">00:00.0</output>
+        <button id="wave-align" aria-controls="compare-tools">对齐工具</button>
+      </div>
+      <div id="wave">
+        <canvas id="wave-shape" aria-hidden="true"></canvas>
+        <div id="wave-markers"></div>
+        <input id="wave-seek" type="range" min="0" max="1" step="0.01" value="0" aria-label="原曲时间">
+      </div>
+      <p id="audio-hint"></p>
+    </section>
+    <footer class="desk-footer">
+      <div class="desk-status">
+        <output id="score-position" aria-label="当前谱面位置"></output><span id="status" role="status"></span><span id="saved-state" role="status"></span>
+      </div>
+      <div class="tool-group page-tools">
+        <button id="editor-btn" class="drawer-toggle" aria-controls="editor-tools" aria-expanded="false">编辑</button>
+        <button id="layout-btn" class="drawer-toggle" aria-controls="inspector" aria-expanded="false">排版</button>
+        <button id="toggle-audio" aria-controls="audio-panel" aria-expanded="false">波形</button>
+        <div id="page-navigation" class="tool-group" aria-label="翻页">
+          <button id="page-prev" aria-label="上一页">‹</button><output id="page-count" aria-label="页码"></output><button id="page-next" aria-label="下一页">›</button>
+        </div>
+        <button id="zoom-out" aria-label="缩小谱面">−</button><button id="zoom-reset" title="恢复 100% 缩放">100%</button><button id="zoom-in" aria-label="放大谱面">＋</button>
+        <button id="toggle-code" aria-expanded="false" aria-controls="code-pane-shell">源码</button>
+      </div>
+    </footer>
+  </main>
+  <dialog id="export-dialog">
+    <form method="dialog"><div class="dialog-head"><h2>导出乐谱</h2><button aria-label="关闭">×</button></div></form>
+    <div class="dialog-actions"><button id="export-midi">MIDI</button><button id="export-xml">MusicXML</button><button id="export-png">PNG 图片</button><button id="export-pdf" class="primary">PDF</button></div>
+  </dialog>
+  <dialog id="save-dialog">
+    <form method="dialog"><div class="dialog-head"><h2>保存工程</h2><button aria-label="关闭">×</button></div>
+      <label class="check"><input id="include-audio" type="checkbox" checked> 把原曲嵌入工程文件</label>
+      <p>工程保存乐谱、排版设置、对齐点和已有的原始 MIDI 音符记录。省略原曲后，可重新载入同一份音频。</p>
+      <div class="dialog-actions"><button>取消</button><button value="save" class="primary">下载 .scoredesk</button></div>
+    </form>
+  </dialog>
+  <dialog id="anchors-dialog">
+    <form method="dialog"><div class="dialog-head"><h2>原曲对齐点</h2><button aria-label="关闭">×</button></div></form>
+    <ul id="anchors-list"></ul>
+  </dialog>
+  <input id="score-file" type="file" accept=".scoredesk,.123,.musicxml,.xml,.mid,.midi" hidden>
+  <input id="audio-file" type="file" accept="audio/*,.wav,.mp3,.ogg,.m4a,.flac,.aac" hidden>
+  <svg id="measure-svg" aria-hidden="true" xmlns="http://www.w3.org/2000/svg"></svg>
+</body>
+</html>

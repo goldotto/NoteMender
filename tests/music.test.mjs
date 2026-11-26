@@ -2,7 +2,17 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {createRequire} from 'node:module';
 import {KEYS,numberPitch,transpose,makeDemo,validateProject,quantizeNotes,scoreSegments,scoreSVG,midiFile} from '../public/music.mjs';
+import {degreeMidi} from '../public/entry-notes.mjs';
 const require=createRequire(import.meta.url),{Midi}=require('@tonejs/midi');
+
+test('all keys including Ab: displayed degree, accidental and octave reconstruct exact sounding MIDI',()=>{
+  for(let key=0;key<12;key++)for(let midi=21;midi<=108;midi++)for(const flats of [false,true]){
+    const p=numberPitch(midi,key,flats);
+    assert.equal(degreeMidi(+p.digit,{key,octave:p.octave,accidental:p.accidental==='♯'?1:p.accidental==='♭'?-1:0}),midi);
+  }
+  assert.deepEqual(numberPitch(68,8),{digit:'1',accidental:'',octave:0});
+  assert.deepEqual(numberPitch(60,8),{digit:'3',accidental:'',octave:-1});
+});
 test('numbered pitch includes accidentals, octave dots, rests and lower octaves',()=>{
  assert.deepEqual(numberPitch(60),{digit:'1',accidental:'',octave:0});
  assert.deepEqual(numberPitch(59),{digit:'7',accidental:'',octave:-1});

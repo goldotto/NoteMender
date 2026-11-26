@@ -1,6 +1,6 @@
 {
   "name": "notemender",
-  "version": "2.5.0-demo.7",
+  "version": "2.5.0",
   "private": true,
   "type": "module",
   "description": "Local audio-to-numbered-notation studio with passage editing and generic plugin API",
@@ -18,7 +18,11 @@
     "@soundtouchjs/audio-worklet": "2.1.1",
     "@spotify/basic-pitch": "^1.0.1",
     "@tonejs/midi": "^2.0.28",
-    "pitchy": "^4.1.0"
+    "fflate": "0.8.3",
+    "kuroshiro": "1.2.0",
+    "kuroshiro-analyzer-kuromoji": "1.1.0",
+    "path-browserify": "1.0.1",
+    "vexflow": "5.0.0"
   },
   "devDependencies": {
     "esbuild": "^0.25.12"

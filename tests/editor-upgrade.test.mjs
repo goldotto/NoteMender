@@ -57,3 +57,31 @@ test('explicit manual lyric links override legacy display while automatic links 
  test('resource-less pending MIDI does not hide the saved project original audio',async()=>{
    const {restorableAudioProject}=await import('../public/candidate-tools.mjs');const project={audioResources:[{source:'original',id:'song'}]},midi={audioResources:[]},audioDraft={audioResources:[{source:'original',id:'new'}]};assert.equal(restorableAudioProject(project,midi),project);assert.equal(restorableAudioProject(project,audioDraft),audioDraft);assert.equal(restorableAudioProject(project,null),project);
  });
+
+test('SRT import preserves overlapping cue intervals and plain multilingual text',()=>{
+  const srt='\uFEFF1\r\n00:00:01,015 --> 00:00:03,500\r\n<i>你好 A &amp; B</i>\r\nかな\r\n\r\n2\r\n00:00:03,400 --> 00:00:04,250\r\n次';
+  const tokens=importLyrics(srt,{start:99,end:100,language:'ja'});
+  assert.deepEqual(tokens.map(({text,start,end,source})=>[text,start,end,source]),[['你好 A & B\nかな',1.015,3.5,'srt'],['次',3.4,4.25,'srt']]);
+  assert.ok(tokens.every(t=>t.language==='ja'&&!t.noteIds.length&&!t.reviewed));
+  assert.deepEqual(normalizeLyrics(tokens),tokens);
+});
+test('WebVTT imports cue and inline intervals without losing time through the project format',()=>{
+  const vtt='WEBVTT\n\nNOTE ignore\nmetadata\n\na\n00:02.250 --> 00:04.050 line:80%\n<v Singer>唱<00:02.500>かな<00:03.100>hello</v>\n\n00:05.000 --> 00:06.010\nNext';
+  const tokens=importLyrics(vtt);
+  assert.deepEqual(tokens.map(({text,start,end})=>[text,start,end]),[['唱',2.25,2.5],['かな',2.5,3.1],['hello',3.1,4.05],['Next',5,6.01]]);
+  const saved=validateProject(JSON.parse(JSON.stringify({...fixture(),lyrics:tokens})));
+  assert.deepEqual(saved.lyrics,tokens);
+});
+test('enhanced LRC accepts closing markers, offsets and repeats and asks for an unknown last end',()=>{
+  const lrc='[ti:歌]\n[offset:+100]\n[00:02.12][00:10.15]<00:02.12>甲<00:02.270>かな<00:03.000>\n[00:14.500]<00:14.500>終';
+  assert.throws(()=>importLyrics(lrc),error=>error.reason==='ending'&&error.line===4&&error.after===14.4);
+  assert.throws(()=>importLyrics(lrc,{lastEnd:14.4}),error=>error.reason==='ending');
+  assert.deepEqual(importLyrics(lrc,{lastEnd:14.9}).map(({text,start,end})=>[text,start,end]),[['甲',2.02,2.17],['かな',2.17,2.9],['甲',10.05,10.2],['かな',10.2,10.93],['終',14.4,14.9]]);
+  assert.deepEqual(importLyrics('[00:02.00]<00:02.00>one\n[00:03.00]two\n[00:04.00]').map(t=>[t.start,t.end]),[[2,3],[3,4]]);
+});
+test('timed lyrics report malformed timings and oversized cue text with the file line',()=>{
+  assert.throws(()=>importLyrics('1\n00:00:02,000 --> 00:00:01,000\nbad'),error=>error.reason==='timing'&&error.line===2);
+  assert.throws(()=>importLyrics('WEBVTT\n\n00:01.000 --> 00:03.000\na<00:04.000>b'),error=>error.reason==='timing'&&error.line===3);
+  assert.throws(()=>importLyrics('1\n00:00:02,000 --> 00:00:03,000\n'+'x'.repeat(121)),error=>error.reason==='text'&&error.line===2);
+  assert.throws(()=>importLyrics('invalid',{format:'srt'}),error=>error.reason==='timing');
+});

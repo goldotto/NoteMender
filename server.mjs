@@ -1,6 +1,6 @@
 import {BUILD} from './src/build-info.mjs';
 import {createUpdates} from './src/updates-service.mjs';
-import {exportName,isExportFilename,collisionName} from './public/export-name.mjs';
+import {EXPORT_EXTENSIONS,exportName,isExportFilename,collisionName} from './public/export-name.mjs';
 import {PROJECT_FILE_LIMIT} from './public/project-file.mjs';
 import {lyricsService} from './src/lyrics-service.mjs';
 import http from 'node:http';
@@ -22,18 +22,22 @@ import {browserModelDirectory} from './src/browser-model.mjs';
 import {soundfontService} from './src/soundfonts.mjs';
 import {createDiagnostics,diagnosticsService,diagnosticRoute} from './src/diagnostics.mjs';
 import {acquireServerLease} from './src/server-lease.mjs';
+import {aiHandler as scoreDeskAI} from './src/scoredesk-ai.mjs';
+
+import {createDownbeatService} from './src/downbeat-service.mjs';
 
 const ROOT=path.dirname(fileURLToPath(import.meta.url));
 const INSTANCE=createHash('sha256').update(path.resolve(ROOT).toLowerCase()).digest('hex').slice(0,16);
-const MIME={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json','.txt':'text/plain; charset=utf-8','.bin':'application/octet-stream','.wasm':'application/wasm','.wav':'audio/wav','.svg':'image/svg+xml'};
+const MIME={'.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.mjs':'text/javascript; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json','.txt':'text/plain; charset=utf-8','.bin':'application/octet-stream','.wasm':'application/wasm','.wav':'audio/wav','.svg':'image/svg+xml','.woff2':'font/woff2','.otf':'font/otf'};
 export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugins'),analysisRoot=ROOT,exportDirectory=path.join(ROOT,'exports'),updatesOptions={}}={}) {
   const logger=createDiagnostics(analysisRoot),diagnostics=diagnosticsService(logger),soundfonts=soundfontService(analysisRoot);
-  let decoding=false,components,updates,muscriptor;const muBusy=()=>Boolean(muscriptor?.busy());const updating=()=>updates?.busy();const token=randomBytes(24).toString('hex'),compute=computeService(analysisRoot,{canStart:()=>!updating()&&!muBusy()&&!components?.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()}),separation=separationService(analysisRoot,{beforeStart:async()=>{if(updating()||muBusy()||components?.busy()||compute.busy()||compute.runner.pending||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前片段分析或组件任务完成');await compute.close();}}),analysis=analysisService(analysisRoot,{nativeRunner:compute.runner,canStart:()=>!updating()&&!muBusy()&&!components?.busy()&&!compute.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()}),resources=audioResourceService(analysisRoot),singing=singingService(analysisRoot,{beforeStart:async()=>{if(updating()||muBusy()||components?.busy()||compute.busy()||compute.runner.pending||separation.busy()||lyrics.busy()||analysis.busy())throw Error('已有分析或组件任务运行中');await compute.close();}});
-  const lyrics=lyricsService(analysisRoot,{canStart:()=>!updating()&&!muBusy()&&!components?.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!analysis.busy(),beforeStart:()=>compute.close()});
-  components=componentsService(analysisRoot,{record:logger.record,canStart:()=>!updating()&&!muBusy()&&!decoding&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),beforeStart:async()=>{compute.invalidate();await compute.close();}});
-  muscriptor=muscriptorService(analysisRoot,{beforeStart:async()=>{if(updating()||decoding||components.busy()||compute.busy()||compute.runner.pending||separation.busy()||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前分析或组件任务完成');await compute.close();}});
+  let decoding=false,components,updates,muscriptor;const beatBusy=()=>downbeats.busy();const muBusy=()=>Boolean(muscriptor?.busy());const updating=()=>updates?.busy();const token=randomBytes(24).toString('hex'),compute=computeService(analysisRoot,{canStart:()=>!beatBusy()&&!updating()&&!muBusy()&&!components?.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()}),separation=separationService(analysisRoot,{beforeStart:async()=>{if(beatBusy()||updating()||muBusy()||components?.busy()||compute.busy()||compute.runner.pending||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前片段分析或组件任务完成');await compute.close();}}),analysis=analysisService(analysisRoot,{nativeRunner:compute.runner,canStart:()=>!beatBusy()&&!updating()&&!muBusy()&&!components?.busy()&&!compute.busy()&&!separation.busy()&&!singing.busy()&&!lyrics.busy()}),resources=audioResourceService(analysisRoot),singing=singingService(analysisRoot,{beforeStart:async()=>{if(beatBusy()||updating()||muBusy()||components?.busy()||compute.busy()||compute.runner.pending||separation.busy()||lyrics.busy()||analysis.busy())throw Error('已有分析或组件任务运行中');await compute.close();}});
+  const lyrics=lyricsService(analysisRoot,{canStart:()=>!beatBusy()&&!updating()&&!muBusy()&&!components?.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!analysis.busy(),beforeStart:()=>compute.close()});
+  components=componentsService(analysisRoot,{record:logger.record,canStart:()=>!beatBusy()&&!updating()&&!muBusy()&&!decoding&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),beforeStart:async()=>{compute.invalidate();await compute.close();}});
+  muscriptor=muscriptorService(analysisRoot,{beforeStart:async()=>{if(beatBusy()||updating()||decoding||components.busy()||compute.busy()||compute.runner.pending||separation.busy()||singing.busy()||lyrics.busy()||analysis.busy())throw Error('请等待当前分析或组件任务完成');await compute.close();}});
   const stopForUpdate=()=>{app.stopAnalysis();app.closeAllConnections();app.close(async()=>{await logger.close();process.exit(0);});};stopForUpdate.port=()=>app.address().port;
-  updates=createUpdates(analysisRoot,{...updatesOptions,record:logger.record,canStart:()=>!muBusy()&&!decoding&&!components.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),onApply:stopForUpdate});
+  updates=createUpdates(analysisRoot,{...updatesOptions,record:logger.record,canStart:()=>!beatBusy()&&!muBusy()&&!decoding&&!components.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy(),onApply:stopForUpdate});
+  const downbeats=createDownbeatService(analysisRoot,{canStart:()=>!updating()&&!muBusy()&&!decoding&&!components.busy()&&!compute.busy()&&!compute.runner.pending&&!separation.busy()&&!singing.busy()&&!lyrics.busy()&&!analysis.busy()});
   const app=http.createServer(async(req,res)=>{
     const started=Date.now(),route=diagnosticRoute(req.url),diagnosticRequest=route.startsWith('/api/diagnostics/'),updateRequest=route.startsWith('/api/updates/'),heartbeatRequest=route==='/api/updates/client';let failure;
     res.once('finish',()=>{if(!diagnosticRequest&&route.startsWith('/api/')&&(res.statusCode>=400||req.method==='POST'&&!heartbeatRequest))logger.record({event:'request.complete',level:res.statusCode>=400?'error':'info',method:req.method,status:res.statusCode,elapsedMs:Date.now()-started,message:route+(failure?' · '+failure:'')});});
@@ -44,6 +48,11 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       if(!/^127\.0\.0\.1:\d+$/.test(host)&&!/^localhost:\d+$/.test(host))return send(403,{error:'仅允许本机访问'});
       const url=new URL(req.url,`http://${host}`),origin=req.headers.origin;
       if(origin&&origin!==`http://${host}`)return send(403,{error:'不允许跨站请求'});
+      const deskAI=/^\/scoredesk\/api\/ai\/(key-status|remember-key|forget-key|test|propose)$/.exec(url.pathname);
+      if(deskAI){
+        const handle=scoreDeskAI({origin:url.origin,dataDir:path.join(analysisRoot,'runtime','scoredesk','ai'),fetchImpl});
+        return handle(req,res,deskAI[1]);
+      }
       if(await updates(req,res,url,send,token))return;
       if(await diagnostics(req,res,url,send,token))return;
       if(await soundfonts(req,res,url,send,token))return;
@@ -55,19 +64,20 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
       if(await separation(req,res,url,send,token))return;
       if(await compute(req,res,url,send,token))return;
       if(await analysis(req,res,url,send,token))return;
+      if(url.pathname==='/api/score/downbeats')return downbeats.handle(req,res,send,token);
       if(['/api/decode','/api/tempo'].includes(url.pathname)&&req.method==='POST'){
         if(req.headers['x-studio-token']!==token)return send(403,{error:'会话已过期，请刷新'});
-        if(updating()||muBusy()||decoding||components.busy())return send(429,{error:'正在解码或处理组件，请稍候'});
+        if(beatBusy()||updating()||muBusy()||decoding||components.busy())return send(429,{error:'正在解码或处理组件，请稍候'});
         decoding=true;const controller=new AbortController();const onClose=()=>{if(!res.writableEnded)controller.abort();};res.on('close',onClose);
         try{let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>120*1024*1024)return send(413,{error:'音频不能超过 120 MB'});chunks.push(c);}if(!size)return send(400,{error:'音频为空'});const mode=url.pathname==='/api/tempo'?'tempo':'decode';return send(200,await decodeLocal(ROOT,Buffer.concat(chunks),controller.signal,mode),mode==='tempo'?'application/json; charset=utf-8':'audio/wav');}
         catch(e){return send(400,{error:e.message});}finally{decoding=false;res.off('close',onClose);}
       }
-      if(url.pathname==='/api/status'&&req.method==='GET')return send(200,{token,...BUILD,instance:INSTANCE});
+      if(url.pathname==='/api/status'&&req.method==='GET')return send(200,{token,...BUILD,instance:INSTANCE,capabilities:{muVocalPitch:true}});
       if(url.pathname==='/api/plugins'&&req.method==='GET')return send(200,{plugins:await listPlugins(pluginDirectory)});
       if(url.pathname==='/api/export-file'&&req.method==='POST'){
         if(req.headers['x-studio-token']!==token)return send(403,{error:'会话已过期，请刷新'});
         const originalName=url.searchParams.get('name')||'export.json',extension=path.extname(originalName).toLowerCase();
-        if(!['.json','.mid','.svg','.wav'].includes(extension))return send(400,{error:'不支持的导出格式'});
+        if(!EXPORT_EXTENSIONS.includes(extension.slice(1)))return send(400,{error:'不支持的导出格式'});
         let size=0,chunks=[];const limit=extension==='.wav'?64*1024*1024:extension==='.json'?PROJECT_FILE_LIMIT:8*1024*1024;
         for await(const chunk of req){size+=chunk.length;if(size>limit)return send(413,{error:extension==='.json'?'工程不能超过 32 MB；导入与保存使用同一上限。':'导出文件过大，请缩短乐谱'});chunks.push(chunk);}
         if(!size)return send(400,{error:'导出内容为空'});
@@ -108,13 +118,19 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
         const filename=path.join(await browserModelDirectory(analysisRoot),path.basename(url.pathname));
         const content=await readFile(filename);return send(200,req.method==='HEAD'?'':content,MIME[path.extname(filename)]||'application/octet-stream');
       }
-      const pathname=decodeURIComponent(url.pathname),base=path.join(ROOT,'public'),filename=path.resolve(base,'.'+(pathname==='/'?'/index.html':pathname));
+      if(url.pathname==='/scoredesk'){
+        res.writeHead(308,{Location:'/scoredesk/'+url.search,'Cache-Control':'no-store'});
+        return res.end();
+      }
+      const pathname=decodeURIComponent(url.pathname),base=path.join(ROOT,'public');
+      const entry=pathname==='/'?'/index.html':pathname==='/scoredesk/'?'/scoredesk/index.html':pathname;
+      const filename=path.resolve(base,'.'+entry);
       if(!filename.startsWith(base+path.sep))return send(403,{error:'路径不允许'});
       if(!(await stat(filename)).isFile())return send(404,{error:'文件不存在'});
       const content=await readFile(filename);send(200,req.method==='HEAD'?'':content,MIME[path.extname(filename)]||'application/octet-stream');
     }catch(e){if(!diagnosticRequest)logger.record({event:'request.exception',level:'error',message:e.message,stack:e.stack});if(!res.headersSent)send(e.code==='ENOENT'?404:400,{error:e.code==='ENOENT'?'文件不存在':'请求无法处理'});else res.end();}
   });
-  app.diagnostics=logger;app.stopAnalysis=()=>{updates.close();muscriptor.close();components.close();compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>{app.stopAnalysis();logger.record({event:'service.stop'});});return app;
+  app.diagnostics=logger;app.stopAnalysis=()=>{downbeats.close();updates.close();muscriptor.close();components.close();compute.close();separation.close();singing.close();lyrics.close();};app.once('close',()=>{app.stopAnalysis();logger.record({event:'service.stop'});});return app;
 }
 if(process.argv[1]&&path.resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   const port=Number(process.env.PORT||4317);await acquireServerLease(ROOT,port);const app=createApp();

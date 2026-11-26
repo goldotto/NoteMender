@@ -7,5 +7,7 @@ export function engravingSettings(value={}) {
     step:value.step!==null&&value.step!==''&&[0,.5,.25,.125,.0625].includes(Number(value.step))?Number(value.step):.25,
     fontSize:finite(value.fontSize,22,16,32),margin:finite(value.margin,14,8,25),
     barsPerRow:Math.round(finite(value.barsPerRow,4,1,8)),lyrics:value.lyrics!==false,
+    tidy:Boolean(value.tidy),closeGaps:Boolean(value.closeGaps),groupBeats:Boolean(value.groupBeats),
+    pickup:Math.round(finite(value.pickup,0,0,3.9375)*16)/16,
     sectionId:typeof value.sectionId==='string'?value.sectionId.slice(0,80):'',flats:Boolean(value.flats)};
 }

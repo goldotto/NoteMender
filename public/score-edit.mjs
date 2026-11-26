@@ -41,23 +41,32 @@ export function placeMovedNotes(project,moving,{overwrite=false,idFactory=uid}={
   const lyrics=mapLyricIds(project.lyrics,remap);
   return {collisions,project:validateProject({...project,...(lyrics?{lyrics}:{}),notes:[...retained,...moving]})};
 }
-export function copyScoreSelection(project,noteIds,lyricIds){
+export function copyScoreSelection(project,noteIds,lyricIds,{alignLyricsToBeats=false}={}){
   const notes=project.notes.filter(n=>noteIds.has(n.id)),lyrics=(project.lyrics||[]).filter(t=>lyricIds.has(t.id));
   if(!notes.length&&!lyrics.length)throw Error('先选择音符或歌词');
   if(lyrics.some(t=>!Number.isFinite(t.start)||!Number.isFinite(t.end)))throw Error('先给所选歌词定位');
-  const beat=Math.min(...notes.map(n=>n.start),...lyrics.map(t=>beatAtTime(project,t.start))),second=timeAtBeat(project,beat);
-  return {kind:'mixed',notes:notes.map(n=>({...n,start:n.start-beat})),lyrics:lyrics.map(t=>({...t,start:t.start-second,end:t.end-second,noteIds:t.noteIds.filter(id=>noteIds.has(id))}))};
+  const firstBeat=Math.min(...notes.map(n=>n.start),...lyrics.map(t=>beatAtTime(project,t.start)));
+  const beat=alignLyricsToBeats?Math.floor(firstBeat/EDIT_STEP)*EDIT_STEP:firstBeat;
+  const second=timeAtBeat(project,beat);
+  const lyricBeats=alignLyricsToBeats?lyrics.map(t=>({start:beatAtTime(project,t.start)-beat,end:beatAtTime(project,t.end)-beat})):null;
+  const slurs=(project.vocalSlurs||[]).filter(s=>noteIds.has(s.start)&&noteIds.has(s.end));
+  return {kind:'mixed',...(lyricBeats?{lyricBeats}:{}),...(slurs.length?{vocalSlurs:slurs.map(s=>({...s}))}:{}),notes:notes.map(n=>({...n,start:n.start-beat})),lyrics:lyrics.map(t=>({...t,start:t.start-second,end:t.end-second,noteIds:t.noteIds.filter(id=>noteIds.has(id))}))};
 }
 export function pasteScoreSelection(project,clipboard,start,{overwriteNotes=false,overwriteLyrics=false,maxSeconds=3600,idFactory=uid}={}){
   if(!clipboard||clipboard.kind!=='mixed')throw Error('先复制音符与歌词');
   if(!Number.isFinite(start)||start<0||Math.abs(snap(start,EDIT_STEP)-start)>1e-6)throw Error('粘贴位置须对齐到 1/16 拍');
   const noteMap=new Map(),second=timeAtBeat(project,start);
   const moving=clipboard.notes.map(n=>{const id=idFactory();noteMap.set(n.id,id);return {...n,id,start:start+n.start,lyric:'',reviewStatus:'reviewed'};});
-  const fresh=clipboard.lyrics.map(t=>({...t,id:idFactory(),start:second+t.start,end:second+t.end,noteIds:t.noteIds.map(id=>noteMap.get(id)).filter(Boolean),source:'manual',reviewed:true,evidenceIds:[],alignmentIssue:''}));
+  const fresh=clipboard.lyrics.map((t,i)=>{
+    const beats=clipboard.lyricBeats?.[i];
+    const timing=beats?{start:timeAtBeat(project,start+beats.start),end:timeAtBeat(project,start+beats.end)}:{start:second+t.start,end:second+t.end};
+    return {...t,id:idFactory(),...timing,noteIds:t.noteIds.map(id=>noteMap.get(id)).filter(Boolean),source:'manual',reviewed:true,evidenceIds:[],alignmentIssue:''};
+  });
   if(fresh.some(t=>t.start<0||t.end>maxSeconds+1e-6))throw Error('歌词粘贴范围超出原音');
   const target=placeMovedNotes(project,moving,{overwrite:overwriteNotes,idFactory});
   if(!target.project)throw Error('目标已有音符；请启用“覆盖目标范围”');
   const collisions=(target.project.lyrics||[]).filter(t=>Number.isFinite(t.start)&&fresh.some(f=>t.start<f.end-1e-6&&t.end>f.start+1e-6));
   if(collisions.length&&!overwriteLyrics)throw Error('目标已有歌词；请启用“覆盖目标歌词”');
-  return {project:validateProject({...target.project,lyrics:[...(target.project.lyrics||[]).filter(t=>!collisions.includes(t)),...fresh]}),noteIds:moving.map(n=>n.id),lyricIds:fresh.map(t=>t.id)};
+  const slurs=(clipboard.vocalSlurs||[]).filter(s=>noteMap.has(s.start)&&noteMap.has(s.end)).map(s=>({start:noteMap.get(s.start),end:noteMap.get(s.end)}));
+  return {project:validateProject({...target.project,...(slurs.length?{vocalSlurs:[...(target.project.vocalSlurs||[]),...slurs]}:{}),lyrics:[...(target.project.lyrics||[]).filter(t=>!collisions.includes(t)),...fresh]}),noteIds:moving.map(n=>n.id),lyricIds:fresh.map(t=>t.id)};
 }

@@ -1,9 +1,9 @@
+import {bindEditorLanguage} from './editor-i18n.mjs';
 // Pure UI construction. Existing element IDs remain the same for all editors.
 export function compactInspector(){
   const actions=document.querySelector('.score-toolbar>.actions'),view=document.createElement('div'),edit=document.createElement('div');view.className='score-view-tools';edit.className='score-edit-tools';
-  for(const node of [...actions.children]){if(node.id==='cursorBeatPosition')document.querySelector('.music-controls').append(node);else if(node.tagName==='LABEL')view.append(node);else edit.append(node);}actions.append(view,edit);
+  for(const node of [...actions.children]){if(node.id==='cursorBeatPosition')document.querySelector('.music-controls').append(node);else if(node.matches('.score-view-pickers,#zoomControl'))view.append(node);else edit.append(node);}actions.append(view,edit);
   document.getElementById('selectionCount').title='普通点击单选；Ctrl 点击添加或取消；Shift 点击选择连续范围；开启框选后拖动选择音符与歌词；拖动已选块可整组移动';
-  const extra=document.querySelector('.workspace-edit'),more=document.createElement('details');more.id='moreEditTools';more.className='more-edit-tools';more.innerHTML='<summary>更多编辑工具：分小节 / 区块轨道</summary>';document.querySelector('.score-panel').after(more);more.append(extra);
   const root=document.getElementById('contextEditor');root.insertAdjacentHTML('afterbegin','<section id="mixedClipboardOptions" hidden><strong>音符与歌词一起粘贴</strong><label class="checkbox"><input id="mixedOverwrite" type="checkbox">覆盖目标音符与歌词（可撤销）</label></section>');const single=document.getElementById('singleEditor'),batch=document.getElementById('batchEditor');
   const title=document.getElementById('title').closest('label');title.classList.add('project-title-field');root.closest('aside').prepend(title);
   root.prepend(batch);root.prepend(single);
@@ -24,4 +24,6 @@ export function compactInspector(){
   const lyricEditor=document.getElementById('lyricEditor');lyricEditor.classList.add('manual-word-editor');bulk.after(lyricEditor);
   const list=document.getElementById('lyricsList');panel.querySelector('.lyric-selection-tools').after(list);
   const inline=document.getElementById('inlineLyricLink');inline.insertAdjacentHTML('beforebegin','<button id="inlineLyricChoose">选择对应音符</button>');
+  // Initial interface skeleton only; no project text has been rendered yet.
+  bindEditorLanguage(document.body);
 }

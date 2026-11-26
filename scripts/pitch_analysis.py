@@ -1,4 +1,5 @@
 """Optional pitch evidence only: no score edits and no remote inference."""
+import importlib.util
 import json
 import sys
 import numpy as np
@@ -6,6 +7,8 @@ import soundfile as sf
 import librosa
 
 def analyse(source, engine, low, high, device='cpu', threads=0):
+    if engine == 'dual':
+        return analyse_agreement(source, low, high, device, threads)
     started = __import__('time').perf_counter()
     fallbacks = []
     if device == 'auto':
@@ -32,6 +35,9 @@ def analyse(source, engine, low, high, device='cpu', threads=0):
             torch.set_num_threads(threads)
         torch.backends.cuda.matmul.allow_tf32 = False
         torch.backends.cudnn.allow_tf32 = False
+        if device == 'cuda' and not torch.cuda.is_available():
+            fallbacks.append('CUDA 不可用，改用 CPU')
+            device = 'cpu'
         if device == 'cuda':
             torch.cuda.reset_peak_memory_stats()
         with torch.inference_mode():
@@ -57,6 +63,26 @@ def analyse(source, engine, low, high, device='cpu', threads=0):
         valid = bool(active and np.isfinite(frequency) and frequency > 0)
         frames.append({'second': i * hop / sr, 'hz': float(frequency) if valid else 0, 'pitch': float(librosa.hz_to_midi(frequency)) if valid else None, 'confidence': float(probability) if np.isfinite(probability) else 0, 'voiced': valid, 'rms': float(rms[min(i, len(rms)-1)])})
     return {'externalEngine': engine, 'externalFrames': frames, 'externalCompute': {'device': device if engine == 'crepe' else 'cpu', 'threads': threads or 'auto', 'fallbacks': fallbacks, 'elapsedMs': (__import__('time').perf_counter()-started)*1000, 'peakGPUAllocatedBytes':torch.cuda.max_memory_allocated() if engine=='crepe' and device=='cuda' else None}}
+
+def analyse_agreement(source, low, high, device, threads):
+    if importlib.util.find_spec('torchcrepe') is None:
+        raise ValueError('缺少 CREPE 音高组件')
+    pyin = analyse(source, 'pyin', low, high, 'cpu', threads)
+    crepe = analyse(source, 'crepe', low, high, device, threads or 2)
+    reference = [frame for frame in pyin['externalFrames'] if frame['voiced']]
+    agreed = []
+    index = 0
+    for frame in crepe['externalFrames']:
+        if not frame['voiced']:
+            continue
+        second = frame['second']
+        while index < len(reference) and reference[index]['second'] < second - .011:
+            index += 1
+        for candidate in reference[index:index + 3]:
+            if abs(candidate['second'] - second) <= .011 and abs(candidate['pitch'] - frame['pitch']) <= .5:
+                agreed.append({'second': second, 'pitch': frame['pitch']})
+                break
+    return {'externalEngine': 'dual', 'externalFrames': agreed}
 
 if __name__ == '__main__':
     try:

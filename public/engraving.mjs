@@ -1,6 +1,8 @@
+import {tr} from './i18n.mjs';
 import {KEYS,numberPitch,keyAt,escapeXML,barLength} from './music.mjs';
 import {beatAtTime,timeAtBeat} from './time-map.mjs';
 import {engravingSettings} from './engraving-settings.mjs';
+import {cleanRhythm} from './rhythm-cleanup.mjs';
 const EPS=1e-7;
 const lengths=[4,3,2,1.5,1,.75,.5,.375,.25,.1875,.125,.0625];
 const widthOf=(text,size)=>[...text].reduce((n,c)=>n+(/[^\x00-\xff]/.test(c)?1:.6)*size,0);
@@ -17,8 +19,10 @@ export function prepareEngraving(project,options={}) {
   copy.keyChanges=settings.key!==null?[]:[{beat:0,key:keyAt(project,from)},...(project.keyChanges||[]).filter(k=>k.beat>from&&k.beat<to).map(k=>({...k,beat:k.beat-from}))];
   const source=project.notes.filter(n=>n.start<to-EPS&&n.start+n.duration>from+EPS).map(n=>({...n,start:Math.max(from,n.start)-from,duration:Math.min(to,n.start+n.duration)-Math.max(from,n.start),clipped:n.start<from-EPS}));
   const changes=[],issues=[];let maxBeatShift=0,maxSecondShift=0;
-  copy.notes=source.map(n=>{
-    const a=settings.step?Math.round(n.start/settings.step)*settings.step:n.start,b=settings.step?Math.round((n.start+n.duration)/settings.step)*settings.step:n.start+n.duration;
+  const cleaned=settings.tidy?cleanRhythm(source,settings):{notes:source,closedGaps:0};
+  copy.notes=source.map((n,index)=>{
+    const adjusted=cleaned.notes[index];
+    const a=settings.tidy?adjusted.start:settings.step?Math.round(n.start/settings.step)*settings.step:n.start,b=settings.tidy?adjusted.start+adjusted.duration:settings.step?Math.round((n.start+n.duration)/settings.step)*settings.step:n.start+n.duration;
     if(b<=a+EPS)issues.push(`第 ${(n.start+from+1).toFixed(4).replace(/0+$/,'').replace(/\.$/,'')} 拍：音符整理后时长为零，请改用更细精度或保留原时值。`);
     const shift=Math.max(Math.abs(a-n.start),Math.abs(b-n.start-n.duration));
     const secondShift=Math.max(Math.abs(timeAtBeat(project,a+from)-timeAtBeat(project,n.start+from)),Math.abs(timeAtBeat(project,b+from)-timeAtBeat(project,n.start+n.duration+from)));
@@ -34,19 +38,23 @@ export function prepareEngraving(project,options={}) {
     for(const id of linked.slice(1))continued.add(id);
   }
   for(const n of copy.notes){if(!labels.has(n.id)&&!continued.has(n.id)&&n.lyric)labels.set(n.id,n.lyric);n.printLyric=n.clipped?'':labels.get(n.id)||'';n.lyricContinuation=continued.has(n.id);}
-  return {project:copy,sourceNotes:source,settings,from,changes,maxBeatShift,maxSecondShift,issues,orphans};
+  if(settings.pickup>=barLength(copy.meter))issues.push('首小节拍数须小于完整小节；完整小节请填 0。');
+  return {project:copy,sourceNotes:source,settings,from,changes,maxBeatShift,maxSecondShift,issues,orphans,closedGaps:cleaned.closedGaps};
 }
 
 export function engravingBars(prepared) {
   if(prepared.issues.length)throw Error(prepared.issues[0]);
-  const p=prepared.project,len=barLength(p.meter),end=p.notes.at(-1).start+p.notes.at(-1).duration,total=Math.ceil((end-EPS)/len)*len,bars=[];
+  const p=prepared.project,len=barLength(p.meter),pickup=prepared.settings.pickup||0,first=pickup||len,end=p.notes.at(-1).start+p.notes.at(-1).duration,total=first+Math.max(0,Math.ceil((end-first-EPS)/len))*len,bars=[];
   const all=[];let cursor=0;for(const n of p.notes){if(n.start>cursor+EPS)all.push({start:cursor,duration:n.start-cursor,midi:null});all.push(n);cursor=n.start+n.duration;}if(cursor<total-EPS)all.push({start:cursor,duration:total-cursor,midi:null});
   for(const n of all){let at=n.start,remaining=n.duration,part=0;
     while(remaining>EPS){
-      const index=Math.floor((at+EPS)/len),barEnd=(index+1)*len,nextKey=(p.keyChanges||[]).find(k=>k.beat>at+EPS)?.beat??Infinity,room=Math.min(remaining,barEnd-at,nextKey-at);
+      const index=at<first-EPS?0:1+Math.floor((at-first+EPS)/len),barStart=index?first+(index-1)*len:0,barEnd=index?barStart+len:first,nextKey=(p.keyChanges||[]).find(k=>k.beat>at+EPS)?.beat??Infinity;
+      const group=p.meter==='6/8'?1.5:1,relative=at-barStart,inside=Math.abs(relative/group-Math.round(relative/group))>EPS;
+      const groupRoom=prepared.settings.groupBeats&&inside?(Math.floor(relative/group)+1)*group-relative:Infinity;
+      const room=Math.min(remaining,barEnd-at,nextKey-at,groupRoom);
       const duration=lengths.find(d=>d<=room+EPS);
       if(!duration||Math.abs(at*16-Math.round(at*16))>1e-5||Math.abs(duration*16-Math.round(duration*16))>1e-5)throw Error('此范围边界无法用现有最细时值排版，请选择节奏整理，或调整区块边界。');
-      bars[index]||={index,atoms:[]};bars[index].atoms.push({...n,start:at,duration,key:keyAt(p,at),part,printLyric:part?'':n.printLyric||'',tieIn:n.midi!==null&&(part>0||n.clipped),tieOut:n.midi!==null&&remaining>duration+EPS});
+      bars[index]||={index,start:barStart,duration:barEnd-barStart,atoms:[]};bars[index].atoms.push({...n,start:at,duration,key:keyAt(p,at),part,printLyric:part?'':n.printLyric||'',tieIn:n.midi!==null&&(part>0||n.clipped),tieOut:n.midi!==null&&remaining>duration+EPS});
       at+=duration;remaining-=duration;part++;
     }
   }
@@ -99,13 +107,13 @@ function drawAtom(a,x,y,w,f,lyricSize,flats,lyricOffset){
 export function renderEngraving(prepared) {
   const layout=layoutEngraving(prepared),{width,height,margin,usable,fontSize:f,lyricSize}=layout,p=prepared.project;
   const pages=layout.pages.map((page,index)=>{
-    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXML(p.title)} 第 ${index+1} 页"><rect width="100%" height="100%" fill="white"/><g fill="black" xml:space="preserve" font-family="'Microsoft YaHei','Noto Sans CJK SC',sans-serif">`;
+    let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" role="img" aria-label="${escapeXML(p.title)} ${tr(`第 ${index+1} 页`,`Page ${index+1}`,`第${index+1}ページ`)}"><rect width="100%" height="100%" fill="white"/><g fill="black" xml:space="preserve" font-family="'Microsoft YaHei','Noto Sans CJK SC',sans-serif">`;
     layout.titleLines.forEach((title,i)=>svg+=text(width/2,margin+28+i*30,title,27,'text-anchor="middle" font-weight="700"'));
     const metaY=margin+layout.headerHeight-25;
     svg+=text(margin,metaY,`1=${KEYS[p.key]}`,14)+text(margin+85,metaY,p.meter,14)+text(margin+140,metaY,`♩=${p.bpm}`,14);
     let y=margin+layout.headerHeight;
     for(const row of page.rows){let bx=margin;
-      for(const chunk of row.chunks){const bw=chunk.minimum+(usable-row.minimum)/row.chunks.length;svg+=text(bx,y-2,String(chunk.index+1)+(chunk.atoms[0].part?'（续）':''),10);
+      for(const chunk of row.chunks){const bw=chunk.minimum+(usable-row.minimum)/row.chunks.length;svg+=text(bx,y-2,String(chunk.index+1)+(chunk.atoms[0].part?tr('（续）',' (cont.)'):''),10);
         let x=bx+10;const extra=(bw-chunk.minimum)/chunk.atoms.length;
         for(const atom of chunk.atoms){const w=atom.minimum+extra;svg+=drawAtom({...atom,showContinuation:prepared.settings.lyrics&&atom.lyricContinuation},x,y,w,f,lyricSize,prepared.settings.flats,row.lyricOffset);x+=w;}
         if(chunk.last)svg+=line(bx+bw-4,y+f*.55,bx+bw-4,y+f*2.1);bx+=bw;

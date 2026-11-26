@@ -1,5 +1,5 @@
 // Raw evidence uses audio seconds. It is deliberately separate from score JSON.
-export const EVIDENCE_VERSION='recognition-2026-10-03-v2';
+export const EVIDENCE_VERSION='recognition-2026-10-25-v3';
 export const sourceLabel={original:'原曲',vocals:'人声轨',other:'其他器乐',bass:'贝斯轨',drums:'鼓轨',instrumental:'无鼓器乐混合',guitar:'吉他轨',piano:'钢琴轨'};
 export function ownEvents(events,clipStart,from,to,{legacy=false,windowId='',decisions=[]}={}){
   const result=[];

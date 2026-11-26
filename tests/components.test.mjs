@@ -15,12 +15,11 @@ import {componentInstallState,applyComponentAvailability} from '../public/compon
 
 test('component availability does not retrigger disabled observers after the value is applied',()=>{
   const saved=globalThis.document;let disabled=false,writes=0;
-  const option={get disabled(){return disabled;},set disabled(value){disabled=value;writes++;}};
-  const engine={value:'auto',querySelector:()=>option};
-  globalThis.document={getElementById:id=>id==='engine'?engine:null};
+  const toggle={type:'checkbox',dataset:{},classList:{toggle(){}},setAttribute(){},closest(){return null;},get disabled(){return disabled;},set disabled(value){disabled=value;writes++;}};
+  globalThis.document={getElementById:id=>id==='lyricAssist'?toggle:null};
   try{
     for(const ready of [false,true]){
-      const status={components:[{id:'muscriptor',ready,description:'测试'}]};
+      const status={components:[{id:'lyrics',ready,description:'测试'}]};
       applyComponentAvailability(status);const appliedWrites=writes;
       for(let i=0;i<5;i++)applyComponentAvailability(status);
       assert.equal(writes,appliedWrites);assert.equal(disabled,!ready);
@@ -195,4 +194,49 @@ test('failed installer keeps a short heading and records detailed failure with c
     const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
     setTimeout(()=>{child.stderr.emit('data',Buffer.from('fetch failed\n'+('详细安装日志 '.repeat(200))+'\n'));child.emit('close',1);},5);return child;
   }});
+});
+
+const delay=ms=>new Promise(resolve=>setTimeout(resolve,ms));
+async function warmSettled(request){for(let i=0;i<400;i++){const {body}=await request('status');if(body.refreshing!==true)return body;await delay(5);}throw Error('background warm did not settle');}
+function cachedSnapshot(){return {version:1,checkedAt:1700000000000,freeBytes:987654321,components:COMPONENTS.map(item=>({...item,ready:item.id==='base',external:false,sharedWith:null,location:null}))};}
+async function writeSnapshot(root,snapshot){await mkdir(path.join(root,'runtime'),{recursive:true});await writeFile(path.join(root,'runtime','component-cache.json'),JSON.stringify(snapshot));}
+
+test('cold status returns the disk snapshot without probing and flags background refresh',async()=>{
+  let calls=0,release;const gate=new Promise(resolve=>{release=resolve;});
+  await fixture(async({root,request})=>{
+    await writeSnapshot(root,cachedSnapshot());
+    const started=Date.now();const {status:code,body}=await request('status');const elapsed=Date.now()-started;
+    assert.equal(code,200);assert.equal(calls,0);
+    assert.equal(body.stale,true);assert.equal(body.refreshing,true);
+    assert.equal(body.checkedAt,1700000000000);assert.equal(body.freeBytes,987654321);
+    assert.deepEqual(body.components.map(item=>item.id),COMPONENTS.map(item=>item.id));
+    assert.equal(body.components.find(item=>item.id==='audio').ready,false);
+    assert.ok(elapsed<300,`snapshot response took ${elapsed}ms`);
+    release();await warmSettled(request);assert.equal(calls,COMPONENTS.length-1);
+  },{location:async()=>{await gate;return {external:true};},inspect:async()=>{calls++;return {ready:true};}});
+});
+
+test('background warm replaces the snapshot and later status reads do not probe again',async()=>{
+  let calls=0;
+  await fixture(async({root,request})=>{
+    await writeSnapshot(root,cachedSnapshot());
+    const first=await request('status');assert.equal(first.body.refreshing,true);assert.equal(first.body.components.find(item=>item.id==='audio').ready,false);
+    const warmed=await warmSettled(request);
+    assert.equal(calls,COMPONENTS.length-1);assert.ok(warmed.components.every(item=>item.ready));assert.equal(warmed.refreshing,false);assert.equal(warmed.stale,undefined);
+    const before=calls,again=await request('status');
+    assert.equal(again.body.refreshing,false);assert.ok(again.body.components.every(item=>item.ready));assert.equal(calls,before);
+    const persisted=JSON.parse(await readFile(path.join(root,'runtime','component-cache.json'),'utf8'));
+    assert.equal(persisted.version,1);assert.ok(persisted.components.every(item=>item.ready));assert.ok(persisted.checkedAt>1700000000000);
+  },{location:async()=>({external:true}),inspect:async()=>{calls++;return {ready:true};}});
+});
+
+test('an in-flight background warm does not block a new installation',async()=>{
+  let release;const gate=new Promise(resolve=>{release=resolve;});
+  await fixture(async({root,request,finished})=>{
+    await writeSnapshot(root,cachedSnapshot());
+    const first=await request('status');assert.equal(first.body.refreshing,true);
+    const install=await request('install',{components:['cpu']});
+    assert.equal(install.status,202);assert.ok(install.body.job?.id);
+    release();assert.equal((await finished()).state,'done');
+  },{location:async()=>{await gate;return {external:true};},inspect:async()=>({ready:true}),spawnImpl:()=>{throw Error('must not install');}});
 });

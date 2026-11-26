@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {readFile,unlink} from 'node:fs/promises';
+import {readFile} from 'node:fs/promises';
+import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import path from 'node:path';
 import {makeDemo,validateProject} from '../public/music.mjs';
 import {PROJECT_FILE_LIMIT,readProjectFile,parseProjectText,projectText,assertProjectSize} from '../public/project-file.mjs';
 import {SELECT_HELP,selectExplanation,parseManual,searchManual} from '../public/help-content.mjs';
@@ -30,10 +31,10 @@ test('recognition options have distinct explanations and manual search finds mod
  assert.deepEqual(searchManual(chapters,''),chapters);assert.ok(searchManual(chapters,'CREPE').length);assert.ok(searchManual(chapters,'32 MB').length);
 });
 test('server exports a large project that the importer can read byte for byte',async()=>{
- const app=createApp();await new Promise(r=>app.listen(0,'127.0.0.1',r));let filename;
+ const directory=mkdtempSync(path.join(tmpdir(),'nm-help-'));const app=createApp({analysisRoot:directory,exportDirectory:path.join(directory,'exports')});await new Promise(r=>app.listen(0,'127.0.0.1',r));
  try{const base=`http://127.0.0.1:${app.address().port}`,{token}=await(await fetch(base+'/api/status')).json(),text=projectText(largeProject());
-  const saved=await fetch(base+'/api/export-file?name=large-project-regression.json',{method:'POST',headers:{'x-studio-token':token},body:text});assert.equal(saved.status,200);const out=await saved.json();filename=out.filename;
+  const saved=await fetch(base+'/api/export-file?name=large-project-regression.json',{method:'POST',headers:{'x-studio-token':token},body:text});assert.equal(saved.status,200);const out=await saved.json();
   const reopened=await(await fetch(base+out.url)).text();assert.equal(reopened,text);assert.equal(parseProjectText(reopened).alternates.length,1200);
   const manual=await fetch(base+'/manual.txt');assert.equal(manual.status,200);assert.match(manual.headers.get('content-type'),/text\/plain/);
- }finally{await new Promise(r=>app.close(r));if(filename)await unlink(new URL('../exports/'+filename,import.meta.url));}
+ }finally{await new Promise(r=>app.close(r));await app.diagnostics.close();rmSync(directory,{recursive:true,force:true});}
 });

@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {stitchEvidence,ownEvents,shiftEvidence,quantizationEvidence} from '../public/recognition-evidence.mjs';
-import {detectMonophonicV2,segmentPitchFrames} from '../src/transcription-v2.mjs';
+import {energyProfile,segmentPitchFrames} from '../src/transcription-v2.mjs';
 import {melodyPath,processEvidence} from '../public/recognition-v2.mjs';
 import {analysisKey,analysisKeys,baseEvidence} from '../public/analysis-cache.mjs';
 import {makeDemo,validateProject,KEYS,quantizeNotes} from '../public/music.mjs';
@@ -42,11 +42,11 @@ test('pitch stays continuous until segmentation; an acoustic attack splits repea
   assert.equal(notes.length,2);assert.deepEqual(notes.map(n=>n.midi),[60,60]);
   assert.equal(segmentPitchFrames(frames,[{second:.1,confidence:.9}],{repeatedNotes:false}).length,1);
 });
-test('low-level pitched recordings survive adaptive energy and silence produces no notes',()=>{
+test('adaptive energy retains quiet attacks without a pitch detector',()=>{
   const sr=22050,samples=new Float32Array(sr);for(let i=sr*.2;i<sr*.8;i++)samples[Math.floor(i)]=.0008*Math.sin(2*Math.PI*440*i/sr);
-  const result=detectMonophonicV2(samples,sr,{minMidi:45,maxMidi:88});
-  assert.ok(result.notes.some(n=>n.midi===69));assert.ok(result.frames.some(f=>f.hz>0&&f.pitch!==Math.round(f.pitch)));
-  assert.deepEqual(detectMonophonicV2(new Float32Array(sr),sr).notes,[]);
+  const result=energyProfile(samples,sr);
+  assert.ok(result.peak>result.floor);assert.ok(result.onsets.length>0);
+  assert.deepEqual(energyProfile(new Float32Array(sr),sr).onsets,[]);
 });
 test('short notes and real octave leaps survive; low energy is marked instead of erased',()=>{
   const samples=new Float32Array(22050).fill(.0001),raw={rawBasic:[{start:0,end:.05,midi:60,confidence:.9,eventId:'a'},{start:.1,end:.5,midi:72,confidence:.9,eventId:'b'}],pitchFrames:[],onsets:[]};

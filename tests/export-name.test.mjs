@@ -6,6 +6,8 @@ import path from 'node:path';
 import {exportName,isExportFilename,isExportPath,importedProjectStem} from '../public/export-name.mjs';
 import {makeDemo,freeScoreSVG} from '../public/music.mjs';
 import {createApp} from '../server.mjs';
+import {prepareEngraving} from '../public/engraving.mjs';
+import {scoreMusicXML} from '../public/score-musicxml.mjs';
 
 test('readable custom names are safe on Windows and old project names remain usable',()=>{
   assert.equal(exportName('主歌 - 已校对'),'主歌 - 已校对.json');
@@ -14,6 +16,9 @@ test('readable custom names are safe on Windows and old project names remain usa
   assert.equal(exportName('CON'),'_CON.json');
   assert.equal(exportName('../别处:工程'),'_别处_工程.json');
   assert.equal(exportName('曲名.  '),'曲名.json');
+  assert.equal(exportName('国际歌.MUSICXML','musicxml'),'国际歌.musicxml');
+  assert.ok(isExportPath('/exports/'+encodeURIComponent('国际歌 (2).musicxml')));
+  for(const name of ['../private.musicxml','CON.musicxml','.hidden.musicxml','bad.musicxml.html'])assert.equal(isExportFilename(name),false);
   assert.equal(importedProjectStem('1759800000000-ab12cd34-旧工程.json'),'旧工程');
   for(const name of ['歌曲','中文😀','CON','../foo','...','NUL.test'])assert.ok(isExportFilename(exportName(name)));
   assert.ok(isExportPath('/exports/'+encodeURIComponent('新工程 (2).json')));
@@ -21,9 +26,38 @@ test('readable custom names are safe on Windows and old project names remain usa
   for(const value of ['/exports/../server.mjs','/exports/%2e%2e%2fprivate.json','/exports/CON.json','/exports/bad%00.json','https://evil.test/exports/工程.json','/exports/bad%'])assert.equal(isExportPath(value),false);
 });
 
+test('MusicXML follows the actual preview export path through naming, saving and attachment download',async()=>{
+  const directory=await mkdtemp(path.join(tmpdir(),'studio-musicxml-export-'));
+  const app=createApp({exportDirectory:directory,analysisRoot:directory});
+  await new Promise(resolve=>app.listen(0,'127.0.0.1',resolve));
+  try{
+    const base=`http://127.0.0.1:${app.address().port}`;
+    const {token}=await(await fetch(base+'/api/status')).json();
+    const project=makeDemo(),body=scoreMusicXML(prepareEngraving(project,{step:0}));
+    const name=exportName('国际歌 - Dolce','musicxml');
+    for(const expected of [name,'国际歌 - Dolce (2).musicxml']){
+      const response=await fetch(base+'/api/export-file?name='+encodeURIComponent(name),{
+        method:'POST',headers:{'x-studio-token':token,'Content-Type':'application/octet-stream'},body
+      });
+      assert.equal(response.status,200);
+      const saved=await response.json();
+      assert.equal(saved.filename,expected);
+      assert.ok(isExportPath(saved.url));
+      assert.equal(await readFile(path.join(directory,expected),'utf8'),body);
+      const downloaded=await fetch(base+saved.url);
+      assert.equal(downloaded.status,200);
+      assert.match(downloaded.headers.get('content-disposition'),/^attachment;/);
+      assert.equal(await downloaded.text(),body);
+    }
+  }finally{
+    await new Promise(resolve=>app.close(resolve));
+    await rm(directory,{recursive:true,force:true});
+  }
+});
+
 test('simultaneous saves keep custom names and every previous version; old export links still work',async()=>{
   const directory=await mkdtemp(path.join(tmpdir(),'studio-export-name-'));
-  const app=createApp({exportDirectory:directory});await new Promise(r=>app.listen(0,'127.0.0.1',r));
+  const app=createApp({exportDirectory:directory,analysisRoot:directory});await new Promise(r=>app.listen(0,'127.0.0.1',r));
   try{
     const base=`http://127.0.0.1:${app.address().port}`,{token}=await(await fetch(base+'/api/status')).json();
     const outputs=await Promise.all(['first','second','third'].map(async body=>{

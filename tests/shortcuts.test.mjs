@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';
-import {shortcutAction,SHORTCUTS} from '../public/shortcuts.mjs';
+import {shortcutAction,SHORTCUTS,keepNativeClipboard} from '../public/shortcuts.mjs';
 const key=(value,extra={})=>({key:value,...extra});
 test('editing shortcuts provide pitch, timing, lyric splitting and standard clipboard actions',()=>{
  assert.equal(shortcutAction(key('ArrowUp')),'up');assert.equal(shortcutAction(key('ArrowDown',{shiftKey:true})),'downOctave');assert.equal(shortcutAction(key('[')),'shorter');assert.equal(shortcutAction(key('L')),'lyricSplit');assert.equal(shortcutAction(key('S',{shiftKey:true})),'splitMiddle');assert.equal(shortcutAction(key('m')),'merge');assert.equal(shortcutAction(key('s',{ctrlKey:true})),'save');assert.equal(shortcutAction(key('v',{ctrlKey:true})),'paste');assert.equal(shortcutAction(key('z',{ctrlKey:true,shiftKey:true})),'redo');assert.equal(shortcutAction(key('ArrowLeft',{altKey:true})),'backThree');assert.equal(shortcutAction(key('a',{metaKey:true})),'selectAll');
@@ -20,4 +20,15 @@ test('marquee shortcut works for lyrics too and respects shortcut disable and te
  assert.equal(shortcutAction(key('f')),'marquee');assert.equal(shortcutAction(key('F')),'marquee');
  for(const context of [{enabled:false},{editing:true},{dialog:true},{busy:true}])assert.equal(shortcutAction(key('f'),context),null);
  assert.ok(SHORTCUTS.some(row=>row[1]==='F'&&row[2].includes('框选')));
+});
+
+test('native clipboard takes priority for browser text and remains available without a score action',()=>{
+ const score={textSelected:false,scoreContext:true,scoreSelected:true,canDispatch:true};
+ for(const action of ['copy','cut','paste']){
+  assert.equal(keepNativeClipboard(action,score),false);
+  for(const options of [{textSelected:true},{scoreContext:false},{canDispatch:false}])assert.equal(keepNativeClipboard(action,{...score,...options}),true);
+ }
+ assert.equal(keepNativeClipboard('copy',{...score,scoreSelected:false}),true);
+ assert.equal(keepNativeClipboard('cut',{...score,scoreSelected:false}),true);
+ assert.equal(keepNativeClipboard('paste',{...score,scoreSelected:false}),false);
 });

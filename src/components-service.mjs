@@ -1,5 +1,5 @@
 import {spawn} from 'node:child_process';
-import {access,mkdir,readFile,readdir,statfs,writeFile} from 'node:fs/promises';
+import {access,mkdir,readFile,readdir,rename,rm,statfs,writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {COMPONENTS,orderedComponents,DOWNLOAD_SOURCES} from '../public/component-catalog.mjs';
@@ -25,33 +25,96 @@ export function installerCommand(root,id,node=process.execPath){
 }
 async function has(file){try{await access(file);return true;}catch{return false;}}
 export function componentsService(root,{record=()=>{},canStart=()=>true,beforeStart=async()=>{},spawnImpl=spawn,inspect=inspectComponent,discover=discoverPython,location=componentLocation}={}){
-  let current=null,controller=null,child=null,cached=null,cacheTime=0,pending=null;const candidates=new Map();
-  async function status(refresh=false){
-    if(pending)return pending;
-    const busy=Boolean(current&&['running','cancelling'].includes(current.state)||!canStart());
-    if(!refresh&&cached&&Date.now()-cacheTime<180000)return {...cached,job:current,busy,checkedAt:cacheTime};
-    if(busy)return {...cached,components:cached?.components||COMPONENTS.map(item=>({...item,ready:item.id==='base',checking:item.id!=='base'})),job:current,busy:true,checkedAt:cacheTime};
-    pending=(async()=>{
-      const components=[];
-      for(const item of COMPONENTS){
-        const checkStarted=Date.now();record({source:'components',event:'check.start',component:item.id});
+  let current=null,controller=null,child=null,cached=null,cacheTime=0,pending=null,warming=null,warmController=null,warmFailedAt=0;
+  const candidates=new Map(),cacheFile=path.join(root,'runtime','component-cache.json');
+  let snapshot=null,snapshotLoaded=false,snapshotRead=null;
+  function useSnapshot(value){snapshot=value;snapshotLoaded=true;snapshotRead=Promise.resolve(value);}
+  function loadSnapshot(){if(snapshotLoaded)return snapshotRead||Promise.resolve(snapshot);snapshotLoaded=true;snapshotRead=(async()=>{try{const data=JSON.parse(await readFile(cacheFile,'utf8'));useSnapshot(data&&data.version===1&&Array.isArray(data.components)&&data.components.length?data:null);}catch{useSnapshot(null);}return snapshot;})();return snapshotRead;}
+  async function saveSnapshot(components,freeBytes,checkedAt){
+    const data={version:1,checkedAt,freeBytes,components};
+    try{const temp=cacheFile+'.tmp';await mkdir(path.dirname(cacheFile),{recursive:true});await writeFile(temp,JSON.stringify(data),'utf8');await rename(temp,cacheFile);}catch{}
+    useSnapshot(data);
+  }
+  async function removeSnapshot(){useSnapshot(null);try{await rm(cacheFile,{force:true});}catch{}}
+  const busyNow=()=>Boolean(current&&['running','cancelling'].includes(current.state)||!canStart());
+  const placeholder=()=>cached?.components||COMPONENTS.map(item=>({...item,ready:item.id==='base',checking:item.id!=='base'}));
+  const busyStatus=()=>({...cached,components:placeholder(),job:current,busy:true,checkedAt:cacheTime,refreshing:Boolean(warming)});
+  async function probeComponents(signal=null){
+    // Two workers cap concurrent Python probes; slots keep catalog order regardless of completion order.
+    const components=new Array(COMPONENTS.length);let index=0;
+    async function worker(){
+      for(;;){
+        if(signal?.aborted)return;
+        const position=index++;if(position>=COMPONENTS.length)return;
+        const item=COMPONENTS[position],checkStarted=Date.now();record({source:'components',event:'check.start',component:item.id});
         let result=item.id==='base'?{ready:true}:null,where;
-        if(!result){where=await location(root,item.id);const missing=(!where.external&&['gpu','cpu','lyrics','singing','muscriptor'].includes(item.id)&&!await has(path.join(where.directory,'ready.json')));
-          result=missing?{ready:false,reason:'组件尚未安装'}:await inspect(root,item.id,where);
+        if(!result){where=await location(root,item.id);signal?.throwIfAborted();
+          const missing=(!where.external&&['gpu','cpu','lyrics','singing','muscriptor'].includes(item.id)&&!await has(path.join(where.directory,'ready.json')));
+          result=missing?{ready:false,reason:'组件尚未安装'}:await inspect(root,item.id,where,{signal});
         }
-        components.push({...item,...result,external:Boolean(where?.external),sharedWith:where?.sharedWith||null,location:where?.external?where.directory||where.python:null});
+        components[position]={...item,...result,external:Boolean(where?.external),sharedWith:where?.sharedWith||null,location:where?.external?where.directory||where.python:null};
         record({source:'components',event:'check.complete',component:item.id,state:result.ready?'ready':'missing',elapsedMs:Date.now()-checkStarted,message:result.reason});
       }
-      let freeBytes=null;try{const info=await statfs(root);freeBytes=Number(info.bavail)*Number(info.bsize);}catch{}
-      cached={components,freeBytes,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES};cacheTime=Date.now();return {...cached,job:current,busy:false,checkedAt:cacheTime};
-    })();try{return await pending;}finally{pending=null;}
+    }
+    const settled=await Promise.allSettled([worker(),worker()]),failed=settled.find(entry=>entry.status==='rejected');if(failed)throw failed.reason;
+    let freeBytes=null;try{const info=await statfs(root);freeBytes=Number(info.bavail)*Number(info.bsize);}catch{}
+    return {components,freeBytes};
+  }
+  function foreground(){
+    const run=(async()=>{
+      const {components,freeBytes}=await probeComponents(),checkedAt=Date.now();
+      cached={components,freeBytes,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES};cacheTime=checkedAt;
+      await saveSnapshot(components,freeBytes,checkedAt);
+      return {...cached,job:current,busy:false,checkedAt:cacheTime,refreshing:false};
+    })();
+    pending=run;run.then(()=>{if(pending===run)pending=null;},()=>{if(pending===run)pending=null;});return run;
+  }
+  function startWarm(){
+    if(warming)return warming;
+    if(pending||!canStart()||Date.now()-warmFailedAt<=60000)return null;
+    const abortController=new AbortController(),signal=abortController.signal;warmController=abortController;
+    warming=(async()=>{
+      try{
+        const {components,freeBytes}=await probeComponents(signal);if(signal.aborted)return null;
+        const checkedAt=Date.now();
+        await saveSnapshot(components,freeBytes,checkedAt);
+        cached={components,freeBytes,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES};cacheTime=checkedAt;
+        return {...cached,job:current,busy:false,checkedAt:cacheTime,refreshing:false};
+      }catch(error){if(!signal.aborted)warmFailedAt=Date.now();return null;}
+      finally{warming=null;if(warmController===abortController)warmController=null;}
+    })();
+    return warming;
+  }
+  function abortWarming(){warmController?.abort();}
+  function snapshotStatus(data){
+    // 目录升级后新增的组件不在旧快照里：标为待检查，避免首屏少卡片。
+    const known=new Map((data.components||[]).map(item=>[item.id,item]));
+    const components=COMPONENTS.map(item=>known.get(item.id)||{...item,ready:item.id==='base',checking:item.id!=='base'});
+    return {components,freeBytes:Number.isFinite(data.freeBytes)?data.freeBytes:null,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES,job:current,busy:false,checkedAt:Number(data.checkedAt)||0,refreshing:Boolean(warming),stale:true};
+  }
+  async function status(refresh=false){
+    if(pending)return pending;
+    const busy=busyNow();
+    if(!refresh&&cached&&Date.now()-cacheTime<180000)return {...cached,job:current,busy,checkedAt:cacheTime,refreshing:false};
+    if(busy)return busyStatus();
+    if(refresh){
+      if(warming){const warmed=await warming;if(pending)return pending;if(warmed)return warmed;if(busyNow())return busyStatus();}
+      return foreground();
+    }
+    await loadSnapshot();
+    if(pending)return pending;
+    if(cached&&Date.now()-cacheTime<180000)return {...cached,job:current,busy:busyNow(),checkedAt:cacheTime,refreshing:false};
+    if(busyNow())return busyStatus();
+    if(snapshot){startWarm();return snapshotStatus(snapshot);}
+    return foreground();
   }
   function start(kind,work){
     if(current&&['running','cancelling'].includes(current.state)||pending||!canStart())throw Error('请等待当前分析、检查或组件任务结束');
+    abortWarming();
     controller=new AbortController();current={id:randomUUID(),kind,state:'running',progress:0,stage:'准备',logs:[],candidates:[]};const job=current,signal=controller.signal;
     const started=Date.now();record({source:'components',event:'task.start',operation:kind});
     // Reserve the task before returning. All stages run sequentially.
-    Promise.resolve().then(async()=>{await beforeStart();signal.throwIfAborted();await work(job,signal);signal.throwIfAborted();job.state='done';job.progress=1;job.stage='完成';}).catch(error=>{job.state=signal.aborted?'cancelled':'failed';job.stage=signal.aborted?'已取消':'任务失败：展开安装详情查看原因，可重试';if(!signal.aborted){job.error=error.message;log(job,error.message);record({source:'components',event:'task.error',operation:kind,component:job.component,level:'error',message:error.message,stack:error.stack});}}).finally(()=>{record({source:'components',event:'task.complete',operation:kind,component:job.component,state:job.state,elapsedMs:Date.now()-started});child=null;cached=null;cacheTime=0;controller=null;});
+    Promise.resolve().then(async()=>{await beforeStart();signal.throwIfAborted();await work(job,signal);signal.throwIfAborted();job.state='done';job.progress=1;job.stage='完成';}).catch(error=>{job.state=signal.aborted?'cancelled':'failed';job.stage=signal.aborted?'已取消':'任务失败：展开安装详情查看原因，可重试';if(!signal.aborted){job.error=error.message;log(job,error.message);record({source:'components',event:'task.error',operation:kind,component:job.component,level:'error',message:error.message,stack:error.stack});}}).finally(()=>{record({source:'components',event:'task.complete',operation:kind,component:job.component,state:job.state,elapsedMs:Date.now()-started});child=null;cached=null;cacheTime=0;controller=null;removeSnapshot();});
     return {...job};
   }
   function log(job,value){const text=String(value).replace(/hf_[a-zA-Z0-9]+/g,'[已隐藏令牌]').replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);record({source:'components',event:'installer.output',component:job.component,message:text});}}
@@ -125,10 +188,11 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
       }
       if(url.pathname==='/api/components/unlink'){
         if(current&&['running','cancelling'].includes(current.state)||pending||!canStart())throw Error('请等待任务结束');
-        if(body.component!=='python'&&!COMPONENTS.some(item=>item.id===body.component))throw Error('无效组件');await beforeStart();const config=await componentConfig(root);delete config.bindings?.[body.component];await saveComponentConfig(root,config);cached=null;send(200,{ok:true});return true;
+        abortWarming();
+        if(body.component!=='python'&&!COMPONENTS.some(item=>item.id===body.component))throw Error('无效组件');await beforeStart();const config=await componentConfig(root);delete config.bindings?.[body.component];await saveComponentConfig(root,config);cached=null;cacheTime=0;await removeSnapshot();send(200,{ok:true});return true;
       }
       send(404,{error:'接口不存在'});
     }catch(error){send(400,{error:error.message});}return true;
   };
-  handler.busy=()=>Boolean(pending||current&&['running','cancelling'].includes(current.state));handler.close=()=>{controller?.abort();return terminateProcess(child);};handler.status=status;return handler;
+  handler.busy=()=>Boolean(pending||current&&['running','cancelling'].includes(current.state));handler.close=()=>{abortWarming();controller?.abort();return terminateProcess(child);};handler.status=status;return handler;
 }

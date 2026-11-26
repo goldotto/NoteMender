@@ -1,5 +1,9 @@
 # Bundled third-party software
 
+- Dolce engraving engine, commit 6b1d3fc663f25e00eee64a99f614ce4b5ac9666c — MIT. See Dolce-NOTICE.txt and Dolce-LICENSE.txt.
+- Bravura music font — SIL Open Font License 1.1. See Dolce-NOTICE.txt and Bravura-OFL.txt.
+- VexFlow 5.0.0 — MIT. The staff workspace bundles VexFlow Core and uses the existing Bravura font. See VexFlow-LICENSE.txt.
+
 Original license texts are preserved beside this file. Runtime bundles and model assets retain upstream copyright.
 
 - @esbuild/win32-x64 0.25.12 — MIT
@@ -45,7 +49,6 @@ Original license texts are preserved beside this file. Runtime bundles and model
 - es-set-tostringtag 2.1.0 — MIT
 - esbuild 0.25.12 — MIT
 - escalade 3.2.0 — MIT
-- fft.js 4.0.4 — MIT
 - form-data 4.0.6 — MIT
 - function-bind 1.1.2 — MIT
 - get-caller-file 2.0.5 — ISC
@@ -63,7 +66,6 @@ Original license texts are preserved beside this file. Runtime bundles and model
 - mime-db 1.52.0 — MIT
 - mime-types 2.1.35 — MIT
 - node-fetch 2.6.13 — MIT
-- pitchy 4.1.0 — MIT
 - regenerator-runtime 0.13.11 — MIT
 - require-directory 2.1.1 — MIT
 - safe-buffer 5.2.1 — MIT
@@ -112,3 +114,13 @@ The optional piano, nylon guitar, violin and flute samples come from gleitz/midi
 ## MuScriptor large（可选）
 
 新增 large 0.3.0 多乐器转谱组件，默认不启用。保留原始多轨 MIDI，并生成供选择的单旋律候选。代码 MIT，权重 CC BY-NC 4.0 及附加条款，需单独授权，不含在基础包内。安装与验证边界见 [MuScriptor组件](../docs/MuScriptor组件.md)。
+
+## Japanese lyric reading
+
+The local romaji view uses Kuroshiro 1.2.0 and its Kuromoji analyzer 1.1.0 (MIT),
+with Kuromoji 0.1.2 (Apache-2.0) and the MeCab IPADIC dictionary. See
+Kuromoji-IPADIC-NOTICE.txt for the NAIST and ICOT terms. The browser bundle
+also contains async, doublearray, lodash, path-browserify and zlibjs. Their
+licenses are included alongside this notice.
+
+- fflate 0.8.3 — MIT. Writes uncompressed ScoreDesk project archives. See fflate-LICENSE.txt.

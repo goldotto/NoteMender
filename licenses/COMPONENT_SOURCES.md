@@ -19,3 +19,11 @@ Optional Python components are downloaded separately by the installer:
 
 Those components and checkpoints follow their upstream licenses. The
 application license does not relicense them.
+
+### Japanese lyric reading
+
+The offline romaji view bundles [Kuroshiro 1.2.0](https://github.com/hexenq/kuroshiro)
+and its [Kuromoji analyzer 1.1.0](https://github.com/hexenq/kuroshiro-analyzer-kuromoji)
+under MIT, with [Kuromoji 0.1.2](https://github.com/takuyaa/kuromoji.js) under Apache-2.0.
+The bundled MeCab IPADIC dictionary retains the NAIST and ICOT terms in
+Kuromoji-IPADIC-NOTICE.txt. The remaining library licenses are in this directory.

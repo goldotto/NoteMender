@@ -5,6 +5,15 @@ import {prepareTimbre,makeTimbreNote,stopTimbreVoices,samplePlaybackGain} from '
 import {COMPONENTS} from '../public/component-catalog.mjs';
 
 function context(offline=false){const nodes=[];const node=()=>{const n={connect(){},disconnect(){this.disconnected=true;},start(t){this.started=t;},stop(t){this.stopped=t;this.stops=(this.stops||0)+1;},frequency:{value:0}};nodes.push(n);return n;};return {nodes,currentTime:0,...(offline?{startRendering(){}}:{}),createGain(){return Object.assign(node(),{gain:{setValueAtTime(){},linearRampToValueAtTime(){},exponentialRampToValueAtTime(){}}});},createOscillator(){return Object.assign(node(),{setPeriodicWave(){}});},createBufferSource:node,createPeriodicWave(){return {};},async decodeAudioData(){return {duration:1};}};}
+
+test('every synth uses absolute MIDI frequency and sample voices choose the exact MIDI buffer',()=>{
+  for(const voice of SYNTH_TIMBRES)for(const midi of [60,68,69,72]){
+    const ctx=context();makeTimbreNote(ctx,{},midi,0,.1,.2,voice);
+    assert.equal(ctx.nodes.at(-1).frequency.value,440*2**((midi-69)/12));stopTimbreVoices();
+  }
+  const buffers=new Map([[60,{duration:1}],[68,{duration:1}]]);
+  for(const midi of [60,68]){const ctx=context();makeTimbreNote(ctx,{},midi,0,.1,.2,{buffers,spec:{sustain:false}});assert.equal(ctx.nodes.at(-1).buffer,buffers.get(midi));stopTimbreVoices();}
+});
 test('all built-in voices schedule and release, and stopping live playback leaves offline export intact',()=>{
   for(const voice of SYNTH_TIMBRES){const ctx=context();makeTimbreNote(ctx,{},69,0,.1,.2,voice);assert.ok(ctx.nodes.some(n=>n.started===0));stopTimbreVoices();assert.ok(ctx.nodes.every(n=>n.disconnected));assert.equal(ctx.nodes.at(-1).stops,2);}
   const ctx=context(true);makeTimbreNote(ctx,{},60,1,1);stopTimbreVoices();assert.equal(ctx.nodes.at(-1).stopped,2+SYNTH_TIMBRES[0].release);

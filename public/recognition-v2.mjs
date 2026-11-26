@@ -38,14 +38,14 @@ export function melodyPath(events,{strategy='smooth',continuity=true,shortNotes=
   for(const p of out){const n=notes.find(n=>n.eventId===p.eventId);if(p.start>n.start+1e-6||p.end<n.end-1e-6)decisions.push({kind:'旋律边界裁剪',second:p.start,end:p.end,midi:p.midi,eventId:p.eventId,originalStart:n.start,originalEnd:n.end,reason:'多声部竞争，只保留被选中的时间范围'});}
   return out;
 }
-export function fuseEvidence(basic,mono,samples,sr=22050,{adaptiveEnergy=true,shortNotes=true,decisions=[]}={}){
+export function fuseEvidence(basic,mono,samples,sr=22050,{adaptiveEnergy=true,shortNotes=true,decisions=[],monoEngine='外部音高证据'}={}){
   const profile=energyProfile(samples,sr),floor=adaptiveEnergy?profile.floor:.006;
   const rms=n=>{let sum=0,count=0;for(let i=Math.max(0,Math.floor(n.start*sr));i<Math.min(samples.length,Math.ceil(n.end*sr));i+=8){sum+=samples[i]**2;count++;}return Math.sqrt(sum/Math.max(1,count));};
   const kept=basic.map(n=>{
     const candidates=mono.filter(p=>overlap(n,p)>dur(n)*.25),nearest=candidates.sort((a,b)=>overlap(n,b)-overlap(n,a))[0];
     const conflict=nearest&&nearest.midi!==n.midi,weak=rms(n)<floor;
     if(weak)decisions.push({kind:'弱音保留待核对',second:n.start,end:n.end,midi:n.midi,eventId:n.eventId,reason:'低能量不直接删除'});
-    return {...n,...(conflict?{pitchConflict:[{engine:'Basic Pitch',midi:n.midi},{engine:'Pitchy',midi:nearest.midi}]}:{}),confidence:conflict||weak?Math.min(.45,n.confidence??.4):n.confidence,reviewFlags:flags(n,...(conflict?['音高冲突']:[]),...(weak?['弱音待核对']:[]))};
+    return {...n,...(conflict?{pitchConflict:[{engine:'Basic Pitch',midi:n.midi},{engine:monoEngine,midi:nearest.midi}]}:{}),confidence:conflict||weak?Math.min(.45,n.confidence??.4):n.confidence,reviewFlags:flags(n,...(conflict?['音高冲突']:[]),...(weak?['弱音待核对']:[]))};
   });
   for(const n of mono){
     if((n.confidence??0)<.75){decisions.push({kind:'低可信度备选',second:n.start,end:n.end,midi:n.midi,eventId:n.eventId});continue;}
@@ -64,8 +64,8 @@ export function processEvidence(raw,samples,options={}){
   const ablation=options.ablation||'none',rules={shortNotes:ablation!=='short',repeatedNotes:ablation!=='repeat',adaptiveEnergy:ablation!=='energy',continuity:ablation!=='continuity'};
   const decisions=[],source=options.source||'original';
   const basic=(raw.rawBasic||[]).map((n,i)=>({...n,eventId:n.eventId||`basic-${i}`,source,reviewFlags:flags(n,...(dur(n)<.08?['短音待核对']:[]))}));
-  const frames=(raw.externalFrames||raw.pitchFrames||[]).map(f=>({...f,voiced:f.voiced&&(rules.adaptiveEnergy||f.rms>.006)})),onsets=[...(raw.onsets||[]),...basic.filter(n=>(n.onsetConfidence??0)>=.5).map(n=>({second:n.start,confidence:n.onsetConfidence,source:'basic'}))];
-  const mono=segmentPitchFrames(frames,onsets,{...rules,source:raw.externalEngine||'pitchy'}).map(n=>({...n,source}));
+  const frames=(['pyin','crepe'].includes(raw.externalEngine)?raw.externalFrames||[]:[]).map(f=>({...f,voiced:f.voiced&&(rules.adaptiveEnergy||f.rms>.006)})),onsets=[...(raw.onsets||[]),...basic.filter(n=>(n.onsetConfidence??0)>=.5).map(n=>({second:n.start,confidence:n.onsetConfidence,source:'basic'}))];
+  const mono=segmentPitchFrames(frames,onsets,{...rules,source:raw.externalEngine||'external-pitch'}).map(n=>({...n,source}));
   // A raw short event is evidence, not automatically a new melody attack.
   const eligible=basic.filter(n=>{
     if(dur(n)>=.08||!rules.shortNotes)return true;
@@ -79,16 +79,16 @@ export function processEvidence(raw,samples,options={}){
   const greedy=melodyPath(eligible,{...rules,continuity:false,strategy:options.strategy,decisions:[]});
   const traced=melodyPath(eligible,{...rules,strategy:options.strategy,decisions});
   let selected=mode==='solo'&&mono.length?mono:traced;
-  if(mode==='vocal')selected=ablation==='fusion'?traced:fuseEvidence(traced,mono,samples,22050,{...rules,decisions});
+  if(mode==='vocal')selected=ablation==='fusion'?traced:fuseEvidence(traced,mono,samples,22050,{...rules,decisions,monoEngine:raw.externalEngine});
   if(!rules.repeatedNotes){const joined=[];for(const n of selected){const last=joined.at(-1);if(last&&last.midi===n.midi&&n.start-last.end<=.08){decisions.push({kind:'消融：同音合并',second:n.start,end:n.end,midi:n.midi});last.end=n.end;}else joined.push({...n});}selected=joined;}
   const monoPath=melodyPath(mono,{...rules,continuity:false}),issues=reviewIssues(selected,samples);
-  if(mode==='dense')for(const n of selected){const p=mono.filter(p=>(p.confidence??0)>=.75&&overlap(n,p)>dur(n)*.5).sort((a,b)=>overlap(n,b)-overlap(n,a))[0];if(p&&p.midi!==n.midi)issues.push({second:n.start,end:n.end,kind:'两个候选音高不一致',pitches:[{engine:'Basic Pitch',midi:n.midi},{engine:raw.externalEngine||'Pitchy',midi:p.midi}]});}
+  if(mode==='dense')for(const n of selected){const p=mono.filter(p=>(p.confidence??0)>=.75&&overlap(n,p)>dur(n)*.5).sort((a,b)=>overlap(n,b)-overlap(n,a))[0];if(p&&p.midi!==n.midi)issues.push({second:n.start,end:n.end,kind:'两个候选音高不一致',pitches:[{engine:'Basic Pitch',midi:n.midi},{engine:raw.externalEngine||'外部音高证据',midi:p.midi}]});}
   for(const n of selected.filter(n=>dur(n)<.08))issues.push({second:n.start,end:n.end,kind:'短音待核对'});
   for(let i=1;i<basic.length;i++){const a=basic[i-1],b=basic[i];if(a.midi===b.midi&&b.start>=a.end-.04&&b.start-a.end<=.08)issues.push({second:a.start,end:b.end,kind:'重复同音，请核对起音'});}
   issues.push(...decisions.filter(d=>d.kind==='弱音保留待核对').map(d=>({second:d.second,end:d.end,kind:d.kind})));
   issues.push(...decisions.filter(d=>d.kind==='短音备选待核对').map(d=>({second:d.second,end:d.end,kind:d.kind})));
   for(const n of basic)if(!rules.shortNotes&&dur(n)<.07)decisions.push({kind:'消融：短音过滤',second:n.start,end:n.end,midi:n.midi,eventId:n.eventId});
-  return {notes:selected,mode,alternates:[{id:'basic',label:'Basic Pitch 无连续性约束',notes:greedy},{id:'pitchy',label:raw.externalEngine||'Pitchy 连续音高分音',notes:monoPath},{id:'raw-short',label:'原始候选旋律（含短音）',notes:melodyPath(basic,{continuity:false,shortNotes:true})}],
+  return {notes:selected,mode,alternates:[{id:'basic',label:'Basic Pitch 无连续性约束',notes:greedy},...(monoPath.length?[{id:'external-pitch',label:`${raw.externalEngine} 连续音高分音`,notes:monoPath}]:[]),{id:'raw-short',label:'原始候选旋律（含短音）',notes:melodyPath(basic,{continuity:false,shortNotes:true})}],
     diagnostics:{basicCount:basic.length,monoCount:mono.length,conflicts:selected.filter(n=>n.reviewFlags?.includes('音高冲突')).length,issues:issues.slice(0,100)},
     evidence:{version:EVIDENCE_VERSION,profile:options.pipeline||'corrected',ablation,rawBasic:basic,rawMono:mono,pitchFrames:frames,onsets,selected,decisions}};
 }

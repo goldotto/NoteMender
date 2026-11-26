@@ -22,6 +22,8 @@ $env:PIP_CACHE_DIR=Join-Path $buildTemp 'pip-cache'
 $env:npm_config_cache=Join-Path $buildTemp 'npm-cache'
 Push-Location -LiteralPath $SourceRoot
 try {
+ $version=(Get-Content -LiteralPath 'public/build-info.json' -Raw | ConvertFrom-Json).version
+ if ($version -notmatch '^\d+\.\d+\.\d+(?:-[A-Za-z0-9.-]+)?$') { throw 'Invalid program version' }
  $program=Join-Path $outputPath 'program'
  $packageArgs=@('scripts/package-update.mjs',$program,$PrivateKey,[string]$Build,$PreviousManifest)
  if ($Mirrors) { $packageArgs += $Mirrors }
@@ -33,12 +35,12 @@ try {
  & $PythonExe 'scripts/prepare-installer-payload.py' '--runtime-zip' $RuntimeZip '--out' $stage '--update' $zip.FullName '--receipt' (Join-Path $program 'installation-receipt.json')
  if ($LASTEXITCODE -ne 0) { throw 'Payload staging failed' }
  foreach ($edition in @('lite','base')) {
-  & $Compiler ('/DPayload='+(Join-Path $stage $edition)) ('/DEdition='+$edition) ('/DBuildNumber='+$Build) ('/DOutput='+(Join-Path $outputPath 'installers')) 'scripts/installer.iss' *> (Join-Path $outputPath ($edition+'-compile.log'))
+  & $Compiler ('/DPayload='+(Join-Path $stage $edition)) ('/DEdition='+$edition) ('/DProductVersion='+$version) ('/DBuildNumber='+$Build) ('/DOutput='+(Join-Path $outputPath 'installers')) 'scripts/installer.iss' *> (Join-Path $outputPath ($edition+'-compile.log'))
   if ($LASTEXITCODE -ne 0) { throw ('Installer compilation failed: '+$edition+'; see local compile log') }
  }
  # Explicit attachment set; do not glob-upload this build directory.
  $files=@($zip.FullName,(Join-Path $program 'NoteMender-update.json'))
- foreach ($edition in @('lite','base')) { $files+=Join-Path $outputPath ('installers\NoteMender-2.5.0-demo.7-build-'+$Build+'-'+$edition+'-x64-Setup.exe') }
+ foreach ($edition in @('lite','base')) { $files+=Join-Path $outputPath ('installers\NoteMender-'+$version+'-build-'+$Build+'-'+$edition+'-x64-Setup.exe') }
  $lines=foreach($file in $files){$hash=Get-FileHash -LiteralPath $file -Algorithm SHA256; $hash.Hash.ToLowerInvariant()+'  '+[IO.Path]::GetFileName($file)}
  $lines | Set-Content -LiteralPath (Join-Path $outputPath 'SHA256SUMS.txt') -Encoding ASCII
  Write-Output ('Local artifacts ready; not published: '+$outputPath)

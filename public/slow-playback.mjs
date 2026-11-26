@@ -14,8 +14,8 @@ export async function playbackLatency(context,speed){
   }
   const latency=gapFrames/context.sampleRate;latencyCache.set(key,latency);return latency;
 }
-export async function createAudioPlayback(context,buffer,{when,offset=0,duration,speed=1,gain=1}){
-  const source=context.createBufferSource(),level=context.createGain();source.buffer=buffer;level.gain.value=gain;level.connect(context.destination);
+export async function createAudioPlayback(context,buffer,{when,offset=0,duration,speed=1,gain=1,destination=context.destination}){
+  const source=context.createBufferSource(),level=context.createGain();source.buffer=buffer;level.gain.value=gain;level.connect(destination);
   let worklet=null,quiet=null;const latency=await playbackLatency(context,speed);
   if(speed!==1){const {SoundTouchNode}=await prepareAudioPlayback(context);worklet=new SoundTouchNode({context});worklet.playbackRate.value=speed;worklet.pitch.value=1;source.playbackRate.value=speed;source.connect(worklet);worklet.connect(level);quiet=context.createBufferSource();quiet.buffer=context.createBuffer(1,128,context.sampleRate);quiet.loop=true;quiet.connect(worklet);quiet.start(when);}else source.connect(level);
   let stopped=false;

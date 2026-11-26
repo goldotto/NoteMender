@@ -1,23 +1,3 @@
-import {PitchDetector} from 'pitchy';
-
-// McLeod pitch estimation comes from Pitchy; only note segmentation is local code.
-export function detectMonophonic(samples,sampleRate=22050,{minMidi=45,maxMidi=88,threshold=.75}={},progress=()=>{}) {
-  const frame=2048,hop=220,detector=PitchDetector.forFloat32Array(frame),pitches=[];
-  for(let t=0;t+frame<=samples.length;t+=hop){
-    const buf=samples.subarray(t,t+frame);let rms=0;for(const x of buf)rms+=x*x;rms=Math.sqrt(rms/frame);
-    const [hz,clarity]=rms>.006?detector.findPitch(buf,sampleRate):[0,0],midi=hz>0?Math.round(69+12*Math.log2(hz/440)):0;
-    pitches.push({time:(t+frame/2)/sampleRate,midi:clarity>=threshold&&midi>=minMidi&&midi<=maxMidi?midi:null,confidence:clarity});
-    if(pitches.length%200===0)progress(t/samples.length);
-  }
-  const filtered=pitches.map((p,i)=>{const mid=pitches.slice(Math.max(0,i-2),i+3).map(x=>x.midi).filter(x=>x!==null).sort((a,b)=>a-b);return {...p,midi:p.midi!==null&&mid.length>=3?mid[Math.floor(mid.length/2)]:p.midi};});
-  let current=null;const notes=[];
-  for(const p of filtered){if(current&&current.midi===p.midi){current.end=p.time+hop/sampleRate;current.sum+=p.confidence;current.count++;}else{if(current&&current.end-current.start>=.08)notes.push({start:current.start,end:current.end,midi:current.midi,confidence:current.sum/current.count});current=p.midi===null?null:{start:Math.max(0,p.time-frame/2/sampleRate),end:p.time+hop/sampleRate,midi:p.midi,sum:p.confidence,count:1};}}
-  if(current&&current.end-current.start>=.08)notes.push({start:current.start,end:current.end,midi:current.midi,confidence:current.sum/current.count});
-  // Windows overlap around transitions; use their midpoint as a shared boundary.
-  for(let i=1;i<notes.length;i++)if(notes[i].start<notes[i-1].end){const t=(notes[i].start+notes[i-1].end)/2;notes[i].start=t;notes[i-1].end=t;}
-  return notes;
-}
-
 // Reduce Basic Pitch's polyphonic events to one voice. This is a heuristic, not source separation.
 export function selectMelody(notes,{minMidi=45,maxMidi=88,strategy='smooth'}={}){
   const candidates=notes.filter(n=>n.midi>=minMidi&&n.midi<=maxMidi&&n.end-n.start>=.07);

@@ -2,7 +2,7 @@ import {EDIT_STEP,clamp,snap} from './music.mjs';
 import {timeAtBeat,beatAtTime} from './time-map.mjs';
 
 export const ANALYSIS_MODES=['auto','vocal','solo','dense'];
-export const modeName={auto:'自动',vocal:'人声',solo:'单音器乐',dense:'密集器乐'};
+export const modeName={auto:'自动',vocal:'人声',solo:'单音器乐',dense:'密集器乐',muscriptor:'MuScriptor'};
 
 // Keep the musical sections intact; only the analysis jobs use short windows.
 export function analysisWindows(spans,seconds=8){
@@ -40,7 +40,7 @@ function polyphonyRatio(notes,windowSeconds){
 export function chooseAnalysisMode({requested='auto',source='original',basic=[],mono=[],windowSeconds=8}){
   if(requested!=='auto')return requested;
   if(source==='vocals')return 'vocal';
-  const voiced=voicedLength(mono)/Math.max(.01,windowSeconds),polyphony=polyphonyRatio(basic,windowSeconds);
+  const voiced=voicedLength(mono.length?mono:basic)/Math.max(.01,windowSeconds),polyphony=polyphonyRatio(basic,windowSeconds);
   return voiced>=.45&&polyphony<.18?'solo':'dense';
 }
 
@@ -76,7 +76,7 @@ export function fuseVocalCandidates(basic,mono,samples,sr=22050){
     const conflict=nearest&&nearest.midi!==n.midi&&same<.25;
     const acoustic=clamp(energy(samples,n.start,n.end,sr)/Math.max(mean,.006),0,1);
     const score=.4*clamp(n.confidence??.4,0,1)+.25*acoustic+.2*continuity(basic,i,n.midi)+.15*Math.min(1,same);
-    return {...n,confidence:conflict?Math.min(.45,score):clamp(score,0,.9),reviewFlags:conflict?['音高冲突']:[],...(conflict?{pitchConflict:[{engine:'Basic Pitch',midi:n.midi},{engine:'Pitchy',midi:nearest.midi}]}:{})};
+    return {...n,confidence:conflict?Math.min(.45,score):clamp(score,0,.9),reviewFlags:conflict?['音高冲突']:[],...(conflict?{pitchConflict:[{engine:'Basic Pitch',midi:n.midi},{engine:nearest.engine||nearest.source||'外部音高证据',midi:nearest.midi}]}:{})};
   });
   const additions=[];
   for(const n of mono){

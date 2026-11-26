@@ -1,7 +1,7 @@
 {
-  "version": "2.5.0-demo.7",
-  "build": 2026102202,
-  "releasedAt": "2026-10-22T11:19:50.635Z",
+  "version": "2.5.0",
+  "build": 2026112601,
+  "releasedAt": "2026-11-26T12:44:20.318Z",
   "distribution": "development",
-  "channel": "preview"
+  "channel": "stable"
 }

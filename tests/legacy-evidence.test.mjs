@@ -1,16 +1,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {legacyResult} from '../src/legacy-evidence.mjs';
-import {selectMelody} from '../src/transcription.mjs';
-import {chooseAnalysisMode,fuseVocalCandidates,traceDenseMelody,chooseDenseCandidate} from '../public/adaptive-strategy.mjs';
-import {acousticReference} from '../public/grounding.mjs';
-test('evidence wrapping preserves legacy selection for vocal, solo, dense and manually chosen engines',()=>{
-  const samples=new Float32Array(22050).fill(.05),basic=[{start:0,end:.4,midi:60,confidence:.9},{start:0,end:.4,midi:72,confidence:.2},{start:.42,end:.85,midi:62,confidence:.9}],mono=[{start:0,end:.4,midi:60,confidence:.95},{start:.42,end:.85,midi:62,confidence:.95}],raw={rawBasic:basic,rawMono:mono,pitchFrames:[]};
-  for(const requested of ['auto','vocal','solo','dense']){
-    const options={source:'vocals',analysisMode:requested,strategy:'smooth'},mode=chooseAnalysisMode({requested,source:options.source,basic,mono,windowSeconds:1}),greedy=selectMelody(basic,options),traced=mode==='dense'?traceDenseMelody(basic,options):greedy,dense=mode==='dense'?chooseDenseCandidate(traced,greedy,1).notes:traced;
-    const expected=mode==='vocal'?fuseVocalCandidates(greedy,mono,samples):mode==='solo'?mono.map(n=>({...n,confidence:Math.min(.75,n.confidence)})):dense;
-    assert.deepEqual(legacyResult(raw,samples,'adaptive',options).notes,expected);
-  }
-  assert.deepEqual(legacyResult(raw,samples,'pitchy').notes,mono);
-  assert.deepEqual(legacyResult(raw,samples,'basic').notes,acousticReference(selectMelody(basic),mono,samples));
+const samples=new Float32Array(22050).fill(.05),basic=[{start:0,end:.4,midi:60,confidence:.5},{start:.42,end:.85,midi:62,confidence:.9}],obsolete=[{start:0,end:.85,midi:80,confidence:.99}];
+test('legacy paths ignore retired mono evidence and keep audible Basic Pitch notes',()=>{
+ for(const engine of ['adaptive','basic','instrumental'])for(const analysisMode of ['auto','vocal','solo','dense']){
+  const options={source:'vocals',analysisMode,strategy:'smooth'},result=legacyResult({rawBasic:basic,rawMono:obsolete,pitchFrames:[{pitch:80}]},samples,engine,options);
+  assert.deepEqual(result.notes.map(n=>n.midi),[60,62]);assert.deepEqual(result.notes,legacyResult({rawBasic:basic},samples,engine,options).notes);
+  assert.equal(result.diagnostics.monoCount,0);assert.deepEqual(result.rawEvidence.rawMono,[]);assert.deepEqual(result.rawEvidence.pitchFrames,[]);assert.ok(result.alternates.every(a=>!a.label.includes('Pitchy')));
+ }
 });
+test('silent vocal events are filtered without a second pitch detector',()=>{
+ for(const engine of ['basic','adaptive'])assert.equal(legacyResult({rawBasic:basic},new Float32Array(22050),engine,{source:'vocals'}).notes.length,0);
+});
+test('retired manual engine is rejected even with cached evidence',()=>{assert.throws(()=>legacyResult({rawBasic:basic,rawMono:obsolete},samples,'pitchy'),/已停用/);});

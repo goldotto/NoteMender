@@ -4,6 +4,9 @@
 #ifndef Edition
   #define Edition "lite"
 #endif
+#ifndef ProductVersion
+  #error ProductVersion required
+#endif
 #ifndef BuildNumber
   #error BuildNumber required
 #endif
@@ -18,8 +21,8 @@
 [Setup]
 AppId={{20E521C7-7601-42F3-BE43-B9DB56AF8DF2}
 AppName=NoteMender
-AppVersion=2.5.0-demo.7
-AppVerName=NoteMender 2.5.0-demo.7 · {#EditionName} · 构建 {#BuildNumber}
+AppVersion={#ProductVersion}
+AppVerName=NoteMender {#ProductVersion} · {#EditionName} · 构建 {#BuildNumber}
 AppPublisher=goldotto
 AppPublisherURL=https://github.com/goldotto/NoteMender
 DefaultDirName={localappdata}\Programs\NoteMender
@@ -32,7 +35,7 @@ MinVersion=10.0
 WizardStyle=modern
 LicenseFile={#Payload}\LICENSE
 OutputDir={#Output}
-OutputBaseFilename=NoteMender-2.5.0-demo.7-build-{#BuildNumber}-{#Edition}-x64-Setup
+OutputBaseFilename=NoteMender-{#ProductVersion}-build-{#BuildNumber}-{#Edition}-x64-Setup
 Compression=lzma2/fast
 SolidCompression=yes
 LZMANumBlockThreads=2

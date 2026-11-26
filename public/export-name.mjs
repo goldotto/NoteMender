@@ -1,4 +1,5 @@
-const formats = /\.(json|mid|svg|wav)$/i;
+export const EXPORT_EXTENSIONS=['json','mid','svg','wav','musicxml'];
+const formats = new RegExp('\\.('+EXPORT_EXTENSIONS.join('|')+')$','i');
 const forbidden = /[<>:"/\\|?*\x00-\x1f\x7f]/;
 const reserved = /^(con|prn|aux|nul|com[1-9¹²³]|lpt[1-9¹²³])(?:\.|$)/i;
 export function exportStem(value){
@@ -9,7 +10,7 @@ export function exportStem(value){
 }
 export function exportName(value,extension='json'){
   extension=String(extension).toLowerCase();
-  if(!['json','mid','svg','wav'].includes(extension))throw Error('不支持的导出格式');
+  if(!EXPORT_EXTENSIONS.includes(extension))throw Error('不支持的导出格式');
   const stem=String(value??'').replace(new RegExp('\\.'+extension+'$','i'),'');
   return exportStem(stem)+'.'+extension;
 }
