@@ -24,7 +24,7 @@ test('review markers use original seconds and only offer retries inside the sele
   ]);
 });
 
-const candidate = {id: 'basis', sectionId: 'verse', source: 'vocals', resourceId: 'a'.repeat(64),
+const candidate = {id: 'basis', muVariant:'medium', sectionId: 'verse', source: 'vocals', resourceId: 'a'.repeat(64),
   analysisId: 'b'.repeat(64), analysisStart: 108, analysisEnd: 132,
   method: 'MuScriptor · 连续旋律', notes: [
     {id:'held', start:111, duration:10, midi:64}, {id:'later', start:125, duration:1, midi:67}
@@ -57,11 +57,11 @@ test('candidate action reads authenticated cache, then submits only the requeste
     AbortSignal, performance, resourceBuffer:async()=>buffer,
     fetch:async(url,options)=>{calls.push([url,options.headers['X-Studio-Token']]);return {ok:true,json:async()=>({duration:24,notes:[]})};},
     monoSamples:async(input,from,to,rate)=>{calls.push([input,from,to,rate]);return new Float32Array(24*rate);},
-    loadMuSource:async input=>{calls.push(['retry',input.from,input.to,input.origin,input.source]);return {origin:input.from,result:{notes:[
+    loadMuSource:async input=>{calls.push(['retry',input.from,input.to,input.origin,input.source,input.task.muVariant]);return {origin:input.from,result:{notes:[
       {id:'context',start:1,end:2,midi:50,instrument:'voice'},{id:'wanted',start:4,end:5,midi:72,instrument:'voice'}
     ]}};},
     sectionSeconds, EDIT_STEP, validateProject, uid, makeRepairAlternate, muSourceVariants, muWindowResult, isMuTrackCandidate,muTrackWindow,scoreMuInstrument,tr:s=>s,
-    normalizeMuPrecision: value=>value, prepareCompute:async()=>{}, setBusy(){}, renderDraftSection(){},
+    normalizeMuPrecision: value=>value, requireRecognitionComponent(mode,variant){assert.equal(mode,'muscriptor');assert.equal(variant,'medium');}, prepareCompute:async()=>{}, setBusy(){}, renderDraftSection(){},
     lyricCandidate: raw=>({notes:raw.map(n=>({id:n.id,start:n.start,duration:n.end-n.start,midi:n.midi})),lyrics:[]}),
     diagnosticTime: String, savePendingDraft:()=>calls.push('saved')
   });
@@ -70,7 +70,7 @@ test('candidate action reads authenticated cache, then submits only the requeste
   const {input} = await state.loadMuReviewInput(info, new AbortController().signal);
   assert.deepEqual(calls, [['/api/muscriptor/result/'+candidate.analysisId+'/json','mock-token'], [buffer,3,27,8000]]);
   const patch = await state.retryMuReview(info, point, input, new AbortController());
-  assert.deepEqual(calls.slice(2), [['retry',112,123,105,'vocals'],'saved']);
+  assert.deepEqual(calls.slice(2), [['retry',112,123,105,'vocals','medium'],'saved']);
   assert.equal(state.selectedDraftVariants.get(section.id), candidate.id);
   assert.equal(state.localDraft.notes[0].id, 'formal');
   const alternate = state.localDraftVariants.find(v=>v.id===patch.id);

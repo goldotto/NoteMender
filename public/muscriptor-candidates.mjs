@@ -1,3 +1,4 @@
+import {muModel,muVariantFromModel} from './muscriptor-spec.mjs';
 import {EDIT_STEP,uid,snap} from './music.mjs';
 import {beatAtTime} from './time-map.mjs';
 
@@ -42,6 +43,7 @@ export function muScoreNotes(raw,base,origin,{minMidi=21,maxMidi=108}={}){
   }return {notes,gridCollisions,outOfRange};
 }
 export function muscriptorCandidates(result,base,origin,sectionId,options={}){
+  const spec=muModel(result.variant??muVariantFromModel(result.model)??'large');
   const families=[...new Set(result.notes.filter(n=>n.instrument!=='drums').map(n=>n.instrument))].sort((a,b)=>Number(b==='voice')-Number(a==='voice')||a.localeCompare(b));
   const variants=[],warnings=[];
   for(const family of families){
@@ -50,7 +52,7 @@ export function muscriptorCandidates(result,base,origin,sectionId,options={}){
       const converted=muScoreNotes(muMelody(group,voice),base,origin,options);if(!converted.notes.length)continue;
       if(converted.notes.length>12000)throw Error('单份 MuScriptor 候选超过工程上限，请缩短识别范围；原始 MIDI 已保留');
       if(converted.gridCollisions||converted.outOfRange)warnings.push(`${family} ${label}：${converted.gridCollisions} 个音的起点落在同一编辑网格，${converted.outOfRange} 个音超出所选音域；原始 MIDI 保留全部输出。`);
-      variants.push({id:uid(),sectionId,source:'original',method:`MuScriptor large · ${family} · ${label}`,model:'muscriptor-0.3.0-large',instrument:family,analysisId:result.analysisId,audioStart:origin,audioEnd:origin+result.duration,notes:converted.notes,lyrics:[]});
+      variants.push({id:uid(),sectionId,source:'original',method:`${spec.name} · ${family} · ${label}`,model:'muscriptor-'+spec.version+'-'+spec.variant,muVariant:spec.variant,instrument:family,analysisId:result.analysisId,audioStart:origin,audioEnd:origin+result.duration,notes:converted.notes,lyrics:[]});
     }
   }
   return {variants,warnings:[...new Set(warnings)]};

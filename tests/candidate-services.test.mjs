@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
+import {buffer} from 'node:stream/consumers';
 import {mkdtemp,mkdir,readFile,writeFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
@@ -41,7 +42,7 @@ test('six-stem routes retain resources after restart, distinguish source ranges 
     await writeFile(path.join(dir,'stems.json'),JSON.stringify({sources:['vocals','other','bass','drums','guitar','piano','instrumental']}));children.at(-1).emit('close',0);
     const done=await call(handler,'/api/separation/job/'+job,wav,'GET');assert.equal(done.body.resources.length,7);
     assert.equal((await call(handler,route)).body.cached,true);assert.equal(calls,1);
-    const restarted=separationService(root);assert.deepEqual((await call(restarted,'/api/separation/track/'+job+'/guitar',wav,'GET')).body,wav);restarted.close();
+    const restarted=separationService(root);assert.deepEqual(await buffer((await call(restarted,'/api/separation/track/'+job+'/guitar',wav,'GET')).body),wav);restarted.close();
     assert.equal((await call(handler,route.replace('start=10&end=14','start=20&end=24'))).status,202);assert.equal(calls,2);children.at(-1).emit('close',1);
   }finally{handler.close();await rm(root,{recursive:true,force:true});}
 });

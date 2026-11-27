@@ -4,6 +4,8 @@ import {EXPORT_EXTENSIONS,exportName,isExportFilename,collisionName} from './pub
 import {PROJECT_FILE_LIMIT} from './public/project-file.mjs';
 import {lyricsService} from './src/lyrics-service.mjs';
 import http from 'node:http';
+import {Readable} from 'node:stream';
+import {pipeline} from 'node:stream/promises';
 import {readFile,stat,mkdir,writeFile} from 'node:fs/promises';
 import path from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -42,7 +44,7 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
     const started=Date.now(),route=diagnosticRoute(req.url),diagnosticRequest=route.startsWith('/api/diagnostics/'),updateRequest=route.startsWith('/api/updates/'),heartbeatRequest=route==='/api/updates/client';let failure;
     res.once('finish',()=>{if(!diagnosticRequest&&route.startsWith('/api/')&&(res.statusCode>=400||req.method==='POST'&&!heartbeatRequest))logger.record({event:'request.complete',level:res.statusCode>=400?'error':'info',method:req.method,status:res.statusCode,elapsedMs:Date.now()-started,message:route+(failure?' · '+failure:'')});});
     res.once('close',()=>{if(!res.writableEnded&&!diagnosticRequest&&route.startsWith('/api/'))logger.record({event:'request.interrupted',level:'warn',method:req.method,elapsedMs:Date.now()-started,message:route});});
-    const send=(status,body,type='application/json; charset=utf-8')=>{if(status>=400&&body?.error)failure=body.error;const job=body?.job||body;if(!diagnosticRequest&&!updateRequest&&job?.state==='failed')logger.record({event:'task.failed',level:'error',message:route+' · '+(job.error||'任务失败')});res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});res.end(typeof body==='string'||Buffer.isBuffer(body)?body:JSON.stringify(body));};
+    const send=(status,body,type='application/json; charset=utf-8')=>{if(status>=400&&body?.error)failure=body.error;const job=body?.job||body;if(!diagnosticRequest&&!updateRequest&&job?.state==='failed')logger.record({event:'task.failed',level:'error',message:route+' · '+(job.error||'任务失败')});res.writeHead(status,{'Content-Type':type,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff','Referrer-Policy':'no-referrer'});if(body instanceof Readable)return pipeline(body,res).catch(()=>{});res.end(typeof body==='string'||Buffer.isBuffer(body)?body:JSON.stringify(body));};
     try {
       const host=req.headers.host||'';
       if(!/^127\.0\.0\.1:\d+$/.test(host)&&!/^localhost:\d+$/.test(host))return send(403,{error:'仅允许本机访问'});
@@ -69,8 +71,8 @@ export function createApp({fetchImpl=fetch,pluginDirectory=path.join(ROOT,'plugi
         if(req.headers['x-studio-token']!==token)return send(403,{error:'会话已过期，请刷新'});
         if(beatBusy()||updating()||muBusy()||decoding||components.busy())return send(429,{error:'正在解码或处理组件，请稍候'});
         decoding=true;const controller=new AbortController();const onClose=()=>{if(!res.writableEnded)controller.abort();};res.on('close',onClose);
-        try{let size=0,chunks=[];for await(const c of req){size+=c.length;if(size>120*1024*1024)return send(413,{error:'音频不能超过 120 MB'});chunks.push(c);}if(!size)return send(400,{error:'音频为空'});const mode=url.pathname==='/api/tempo'?'tempo':'decode';return send(200,await decodeLocal(ROOT,Buffer.concat(chunks),controller.signal,mode),mode==='tempo'?'application/json; charset=utf-8':'audio/wav');}
-        catch(e){return send(400,{error:e.message});}finally{decoding=false;res.off('close',onClose);}
+        try{const mode=url.pathname==='/api/tempo'?'tempo':'decode';return send(200,await decodeLocal(ROOT,req,controller.signal,mode),mode==='tempo'?'application/json; charset=utf-8':'audio/wav');}
+        catch(e){if(!res.destroyed)return send(e.code==='AUDIO_TOO_LARGE'?413:400,{error:e.message});}finally{decoding=false;res.off('close',onClose);}
       }
       if(url.pathname==='/api/status'&&req.method==='GET')return send(200,{token,...BUILD,instance:INSTANCE,capabilities:{muVocalPitch:true}});
       if(url.pathname==='/api/plugins'&&req.method==='GET')return send(200,{plugins:await listPlugins(pluginDirectory)});

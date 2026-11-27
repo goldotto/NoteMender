@@ -9,7 +9,7 @@ export const COMPONENTS=Object.freeze([
   {id:'gpu',name:'NVIDIA 显卡加速',description:'CUDA 12.8 的 PyTorch 与 ONNX Runtime。用于合格的分轨与音高路径；安装不代表所有模型都已通过一致性验证。需要兼容的 NVIDIA 显卡和驱动。',download:'约 3 GB',space:12,requires:['python','basic']},
   {id:'cpu',name:'原生 CPU 推理组件',description:'ONNX Runtime 多线程后端；未通过一致性检查的 Basic Pitch 路径仍使用当前后端。',download:'约 20 MB',space:.12,requires:['python','basic']},
   {id:'singing',name:'演唱精细分音（实验）',description:'ROSVOT 额外人声候选，适合比较演唱分音；需要显卡组件与额外检查点。',download:'约 1 GB，依检查点而定',space:3,requires:['audio','gpu']},
-  {id:'muscriptor',name:'MuScriptor large 多乐器转谱（实验）',description:'large 约 13 亿参数；按乐器家族生成多音 MIDI 与单旋律候选。不做歌词识别或音轨分离。权重仅限非商用，须先接受 Hugging Face 条款。优先复用已有 PyTorch。',download:'large 权重约 5.47 GB，另有小型推理依赖',space:7,requires:['audio-env']},
+  {id:'muscriptor',name:'MuScriptor 多乐器转谱',description:'把录音转成多乐器 MIDI 和旋律候选。请选择适合电脑的模型。权重限非商用，首次下载需在 Hugging Face 接受对应模型的条款。',download:'选择 Small、Medium 或 Large',space:0,requires:['audio-env']},
 ]);
 export function orderedComponents(ids){
   if(!Array.isArray(ids)||!ids.length||ids.length>COMPONENTS.length)throw Error('请选择组件');

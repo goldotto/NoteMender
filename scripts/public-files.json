@@ -330,6 +330,7 @@
   "server.mjs",
   "setup-runtime.ps1",
   "src/analysis-service.mjs",
+  "src/audio-io.mjs",
   "src/audio-resources.mjs",
   "src/basic-native.mjs",
   "src/browser-model.mjs",

@@ -56,7 +56,7 @@ Name: "audio"; Description: "四／六轨分轨（约 0.75 GB；需要 Python �
 Name: "lyrics"; Description: "Qwen 歌词识别与对齐（约 3.9 GB；精简版另需 CPU 音频环境）"; GroupDescription: "安装后可选下载（默认不下载）："; Flags: unchecked
 Name: "gpu"; Description: "NVIDIA 加速（下载约 3 GB，预留 12 GB；需兼容显卡和驱动）"; Flags: unchecked
 Name: "singing"; Description: "ROSVOT（约 1 GB，另需 NVIDIA 组件；实验功能）"; Flags: unchecked
-Name: "muscriptor"; Description: "MuScriptor large（约 5.47 GB；官方非商用授权或本机权重）"; Flags: unchecked
+Name: "muscriptor"; Description: "配置 MuScriptor 模型（可选 Small、Medium 或 Large）"; Flags: unchecked
 [Files]
 Source: "{#Payload}\*"; DestDir: "{app}"; Excludes: "\runtime\*"; Flags: ignoreversion recursesubdirs createallsubdirs
 Source: "{#Payload}\runtime\*"; DestDir: "{app}\runtime"; Flags: ignoreversion recursesubdirs createallsubdirs uninsneveruninstall; Excludes: "\updates\installed.json"

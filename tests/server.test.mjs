@@ -1,8 +1,10 @@
-import test from 'node:test';import assert from 'node:assert/strict';import {createApp} from '../server.mjs';import {mkdtemp,writeFile,rm} from 'node:fs/promises';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import path from 'node:path';
+import test from 'node:test';import assert from 'node:assert/strict';import {createApp} from '../server.mjs';import {mkdtemp,readdir,writeFile,rm} from 'node:fs/promises';import {mkdtempSync,rmSync} from 'node:fs';import {tmpdir} from 'node:os';import path from 'node:path';
+import {request} from 'node:http';
+import {setTimeout as delay} from 'node:timers/promises';
 // Every server instance gets a throwaway analysis root and export directory, so a
 // test run can never append to the real runtime log or exports folder. Both are
 // removed only after the diagnostics queue has flushed its final service.stop event.
-async function serve(fn,options={}){const directory=mkdtempSync(path.join(tmpdir(),'nm-test-'));const app=createApp({analysisRoot:directory,exportDirectory:path.join(directory,'exports'),...options});await new Promise(r=>app.listen(0,'127.0.0.1',r));try{await fn(`http://127.0.0.1:${app.address().port}`);}finally{await new Promise(r=>app.close(r));await app.diagnostics.close();rmSync(directory,{recursive:true,force:true});}}
+async function serve(fn,options={}){const directory=mkdtempSync(path.join(tmpdir(),'nm-test-'));const app=createApp({analysisRoot:directory,exportDirectory:path.join(directory,'exports'),...options});await new Promise(r=>app.listen(0,'127.0.0.1',r));try{await fn(`http://127.0.0.1:${app.address().port}`,directory);}finally{await new Promise(r=>app.close(r));await app.diagnostics.close();rmSync(directory,{recursive:true,force:true});}}
 test('serves local UI, prevents cross-origin and unauthenticated mutations',()=>serve(async base=>{
  assert.equal((await fetch(base)).status,200);
  assert.equal((await fetch(base+'/api/status',{headers:{origin:'https://evil.example'}})).status,403);
@@ -29,4 +31,37 @@ test('exports save a real file and use attachment headers; traversal and unsuppo
  const {token}=await (await fetch(base+'/api/status')).json();const r=await fetch(base+'/api/export-file?name='+encodeURIComponent('验证工程.json'),{method:'POST',headers:{'x-studio-token':token},body:'{"test":true}'});assert.equal(r.status,200);const out=await r.json();assert.ok(out.url.startsWith('/exports/'));const file=await fetch(base+out.url);assert.match(file.headers.get('content-disposition'),/^attachment/);assert.equal(await file.text(),'{"test":true}');
  const bad=await fetch(base+'/api/export-file?name=bad.html',{method:'POST',headers:{'x-studio-token':token},body:'x'});assert.equal(bad.status,400);
  const noToken=await fetch(base+'/api/export-file?name=test.json',{method:'POST',body:'x'});assert.equal(noToken.status,403);
+}));
+test('HTTP audio round trip preserves bytes and a disconnected upload removes its partial file',()=>serve(async (base,directory)=>{
+ const {token}=await (await fetch(base+'/api/status')).json();
+ const headers={'x-studio-token':token},url=base+'/api/resources/audio?start=0&end=2';
+ const resources=path.join(directory,'runtime/audio-resources');
+ const upload=request(url,{method:'POST',headers:{...headers,'content-length':1048576}});
+ const closed=new Promise(resolve=>upload.once('close',resolve));
+ upload.on('error',()=>{});
+ const audio=Buffer.alloc(262144);
+ audio.write('RIFF');audio.write('WAVE',8);
+ const uploads=async()=>((await readdir(resources).catch(error=>{
+  if(error.code==='ENOENT')return [];
+  throw error;
+ })).filter(name=>name.startsWith('upload-'))).length;
+ const waitForUploads=async count=>{
+  for(let attempt=0;attempt<150;attempt++){
+   if((await uploads())===count)return;
+   await delay(20);
+  }
+  assert.equal(await uploads(),count);
+ };
+ try{
+  upload.write(audio);
+  await waitForUploads(1);
+ }finally{upload.destroy();await closed;}
+ await waitForUploads(0);
+ const saved=await fetch(url,{method:'POST',headers,body:audio});
+ assert.equal(saved.status,200);
+ const {id}=await saved.json();
+ const stored=await fetch(base+'/api/resources/audio/'+id,{headers});
+ assert.equal(stored.status,200);
+ assert.equal(stored.headers.get('content-type'),'audio/wav');
+ assert.deepEqual(Buffer.from(await stored.arrayBuffer()),audio);
 }));

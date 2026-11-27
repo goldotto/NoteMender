@@ -14,14 +14,27 @@ test('standard and performance separation create jobs with a directory path and 
   await mkdir(path.join(runtime,'acceleration/cpu/onnxruntime'),{recursive:true});await writeFile(path.join(runtime,'acceleration/cpu/onnxruntime/__init__.py'),'');
   await mkdir(path.join(root,'scripts'));await writeFile(path.join(root,'scripts/component-models.json'),JSON.stringify({audio:{file:'fixture.th'}}));await mkdir(path.join(runtime,'models/hub/checkpoints'),{recursive:true});await writeFile(path.join(runtime,'models/hub/checkpoints/fixture.th'),'model');
   const calls=[],children=[];
-  const handler=separationService(root,{spawnImpl:(python,args,options)=>{
+  let release,entered;
+  const started=new Promise(resolve=>{entered=resolve;});
+  const gate=new Promise(resolve=>{release=resolve;});
+  const handler=separationService(root,{beforeStart:()=>{entered();return gate;},spawnImpl:(python,args,options)=>{
     calls.push({python,args,options});const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};children.push(child);return child;
   }});
   try{
     for(const mode of ['standard','performance']){
       const wav=Buffer.alloc(44);wav.write('RIFF');wav.write('WAVE',8);
       const req=Readable.from([wav]);req.method='POST';req.headers={'x-studio-token':'token'};
-      let response;await handler(req,{},new URL(`http://localhost/api/separation/start?compute=${mode}&device=cpu&threads=0`),(status,body)=>response={status,body},'token');
+      const url=new URL(`http://localhost/api/separation/start?compute=${mode}&device=cpu&threads=0`);
+      let response;const pending=handler(req,{},url,(status,body)=>response={status,body},'token');
+      if(mode==='standard'){
+        await started;
+        const other=Readable.from([wav]);other.method=req.method;other.headers=req.headers;
+        try{
+          let status;await handler(other,{},url,code=>{status=code;},'token');
+          assert.equal(status,409);assert.equal(calls.length,0);
+        }finally{release();}
+      }
+      await pending;
       assert.equal(response.status,202,JSON.stringify(response.body));
       const call=calls.at(-1),dir=path.dirname(call.args[1]);
       assert.equal(path.dirname(dir),runtime);assert.equal(call.options.env.TORCH_HOME,path.join(runtime,'models'));

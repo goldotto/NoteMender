@@ -8,3 +8,19 @@
 @media(max-width:650px){.component-grid{grid-template-columns:1fr}.component-shell{padding:16px}.component-footer{bottom:-16px}.component-footer .primary{margin-left:0}.component-installer-page main{margin:12px}.component-heading h1,.component-heading h2{font-size:22px}}
 
 .component-error{font-size:13px;max-height:160px;overflow:auto;overflow-wrap:anywhere;white-space:pre-wrap}.component-progress h3{overflow-wrap:anywhere}
+
+.component-mu{margin-top:16px;scroll-margin-top:12px}
+.component-mu h3,.component-mu h4{margin:0 0 6px}
+.component-mu header{flex-wrap:wrap;align-items:center}
+.component-mu-models{border:0;padding:0;margin:10px 0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+.component-mu-models legend{margin-bottom:6px}
+.component-mu-models label{border:1px solid #dde4d9;border-radius:8px;padding:8px;align-items:flex-start}
+.component-mu-models label:has(:checked){border-color:#4f8d73;background:#edf6ee}
+.component-mu-models input{accent-color:#2d7155}
+.component-mu-models small{display:block;font-weight:400;margin-bottom:4px}
+.component-mu .component-scan{margin:12px 0 0}
+.component-mu .component-scan ol{margin:0 0 12px;padding-inline-start:24px}
+.component-mu .component-scan li{margin-bottom:5px}
+.component-mu form label{flex-wrap:wrap}
+.component-mu form input[type=text],.component-mu form input[type=password]{min-width:0;width:100%;max-width:100%;box-sizing:border-box;border:1px solid #cdd9cc;border-radius:8px;padding:8px}
+@media(max-width:560px){.component-mu-models{grid-template-columns:1fr}}

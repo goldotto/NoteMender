@@ -1,10 +1,12 @@
 import {spawn} from 'node:child_process';
-import {access,mkdir,readFile,readdir,rename,rm,statfs,writeFile} from 'node:fs/promises';
+import {access,mkdir,readFile,readdir,rename,rm,stat,statfs,writeFile} from 'node:fs/promises';
 import {createHash,randomUUID} from 'node:crypto';
 import path from 'node:path';
 import {COMPONENTS,orderedComponents,DOWNLOAD_SOURCES} from '../public/component-catalog.mjs';
 import {componentConfig,saveComponentConfig,audioRuntime} from './component-config.mjs';
 import {componentLocation,inspectComponent,discoverPython,knownModelHomes,knownQwenPaths} from './component-discovery.mjs';
+import {MU_MODEL_IDS,muModel} from '../public/muscriptor-spec.mjs';
+import {runProbe} from './component-discovery.mjs';
 import {terminateProcess} from './process-control.mjs';
 import {pythonFor} from './python-runtime.mjs';
 import {accelerationEnv} from './compute-runtime.mjs';
@@ -29,9 +31,9 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
   const candidates=new Map(),cacheFile=path.join(root,'runtime','component-cache.json');
   let snapshot=null,snapshotLoaded=false,snapshotRead=null;
   function useSnapshot(value){snapshot=value;snapshotLoaded=true;snapshotRead=Promise.resolve(value);}
-  function loadSnapshot(){if(snapshotLoaded)return snapshotRead||Promise.resolve(snapshot);snapshotLoaded=true;snapshotRead=(async()=>{try{const data=JSON.parse(await readFile(cacheFile,'utf8'));useSnapshot(data&&data.version===1&&Array.isArray(data.components)&&data.components.length?data:null);}catch{useSnapshot(null);}return snapshot;})();return snapshotRead;}
+  function loadSnapshot(){if(snapshotLoaded)return snapshotRead||Promise.resolve(snapshot);snapshotLoaded=true;snapshotRead=(async()=>{try{const data=JSON.parse(await readFile(cacheFile,'utf8'));useSnapshot(data&&[1,2].includes(data.version)&&Array.isArray(data.components)&&data.components.length?data:null);}catch{useSnapshot(null);}return snapshot;})();return snapshotRead;}
   async function saveSnapshot(components,freeBytes,checkedAt){
-    const data={version:1,checkedAt,freeBytes,components};
+    const data={version:2,checkedAt,freeBytes,components};
     try{const temp=cacheFile+'.tmp';await mkdir(path.dirname(cacheFile),{recursive:true});await writeFile(temp,JSON.stringify(data),'utf8');await rename(temp,cacheFile);}catch{}
     useSnapshot(data);
   }
@@ -48,8 +50,25 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
         const position=index++;if(position>=COMPONENTS.length)return;
         const item=COMPONENTS[position],checkStarted=Date.now();record({source:'components',event:'check.start',component:item.id});
         let result=item.id==='base'?{ready:true}:null,where;
+        if(item.id==='muscriptor'){
+          const variants={},probes=new Map();
+          // Sibling models share the dependency probe when they use the same environment.
+          const run=(command,args,options)=>{
+            const key=JSON.stringify([command,options.env?.PYTHONPATH]);
+            if(!probes.has(key))probes.set(key,runProbe(command,args,options));
+            return probes.get(key);
+          };
+          for(const variant of MU_MODEL_IDS){
+            where=await location(root,item.id,{variant});
+            signal?.throwIfAborted();
+            const checked=await inspect(root,item.id,where,{signal,run});
+            variants[variant]={...checked,external:Boolean(where.external)};
+          }
+          result={ready:Object.values(variants).some(model=>model.ready),variants};
+          where=null;
+        }
         if(!result){where=await location(root,item.id);signal?.throwIfAborted();
-          const missing=(!where.external&&['gpu','cpu','lyrics','singing','muscriptor'].includes(item.id)&&!await has(path.join(where.directory,'ready.json')));
+          const missing=(!where.external&&['gpu','cpu','lyrics','singing'].includes(item.id)&&!await has(path.join(where.directory,'ready.json')));
           result=missing?{ready:false,reason:'组件尚未安装'}:await inspect(root,item.id,where,{signal});
         }
         components[position]={...item,...result,external:Boolean(where?.external),sharedWith:where?.sharedWith||null,location:where?.external?where.directory||where.python:null};
@@ -89,7 +108,14 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
   function snapshotStatus(data){
     // 目录升级后新增的组件不在旧快照里：标为待检查，避免首屏少卡片。
     const known=new Map((data.components||[]).map(item=>[item.id,item]));
-    const components=COMPONENTS.map(item=>known.get(item.id)||{...item,ready:item.id==='base',checking:item.id!=='base'});
+    const components=COMPONENTS.map(item=>{
+      const saved=known.get(item.id);
+      if(!saved)return {...item,ready:item.id==='base',checking:item.id!=='base'};
+      if(item.id!=='muscriptor'||saved.variants)return saved;
+      // The old snapshot only knew Large. Keep it usable while variant probes warm up.
+      return {...saved,...item,variants:{small:{ready:false},medium:{ready:false},
+        large:{ready:Boolean(saved.ready),external:Boolean(saved.external)}}};
+    });
     return {components,freeBytes:Number.isFinite(data.freeBytes)?data.freeBytes:null,installDirectory:path.join(root,'runtime'),sources:DOWNLOAD_SOURCES,job:current,busy:false,checkedAt:Number(data.checkedAt)||0,refreshing:Boolean(warming),stale:true};
   }
   async function status(refresh=false){
@@ -117,13 +143,14 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
     Promise.resolve().then(async()=>{await beforeStart();signal.throwIfAborted();await work(job,signal);signal.throwIfAborted();job.state='done';job.progress=1;job.stage='完成';}).catch(error=>{job.state=signal.aborted?'cancelled':'failed';job.stage=signal.aborted?'已取消':'任务失败：展开安装详情查看原因，可重试';if(!signal.aborted){job.error=error.message;log(job,error.message);record({source:'components',event:'task.error',operation:kind,component:job.component,level:'error',message:error.message,stack:error.stack});}}).finally(()=>{record({source:'components',event:'task.complete',operation:kind,component:job.component,state:job.state,elapsedMs:Date.now()-started});child=null;cached=null;cacheTime=0;controller=null;removeSnapshot();});
     return {...job};
   }
-  function log(job,value){const text=String(value).replace(/hf_[a-zA-Z0-9]+/g,'[已隐藏令牌]').replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);record({source:'components',event:'installer.output',component:job.component,message:text});}}
+  const redactToken=value=>String(value).replace(/hf_[a-zA-Z0-9]+/g,'[已隐藏令牌]');
+  function log(job,value){const text=redactToken(value).replace(/\x1b\[[0-9;]*m/g,'').trim();if(text){job.logs.push(text.slice(-1200));job.logs=job.logs.slice(-30);record({source:'components',event:'installer.output',component:job.component,message:text});}}
   async function execute(job,id,signal,region,mu={}){
     const [command,args]=installerCommand(root,id);signal.throwIfAborted();
     const runtime=await installerRuntime(root,id);
     // Installer subprocesses always use owned interpreter/targets. Reused environments stay read-only.
-    await new Promise((resolve,reject)=>{let tail='',buffer='';child=spawnImpl(command,args,{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...runtime.env,...(id==='muscriptor'?{NOTEMENDER_MUSCRIPTOR_TERMS:mu.acceptTerms===true?'accepted':'',NOTEMENDER_MUSCRIPTOR_FILE:mu.modelFile||'',NOTEMENDER_HF_TOKEN:mu.token||''}:{}),NOTEMENDER_INSTALL_MANAGED:'1',NOTEMENDER_DOWNLOAD_REGION:region,PYTHONIOENCODING:'utf-8',PYTHONUNBUFFERED:'1',PIP_CACHE_DIR:path.join(root,'runtime','downloads','pip'),TEMP:path.join(root,'runtime','downloads','temp'),TMP:path.join(root,'runtime','downloads','temp')}});
-      const output=chunk=>{buffer+=chunk.toString();const lines=buffer.split(/[\r\n]+/);buffer=lines.pop();for(const line of lines){log(job,line);tail=(tail+'\n'+line).slice(-2000);try{const data=JSON.parse(line);if(data.stage)job.stage=data.stage;if(Number.isFinite(data.progress))job.unitProgress=Math.max(0,Math.min(1,data.progress));}catch{}}};child.stdout.on('data',output);child.stderr.on('data',output);
+    await new Promise((resolve,reject)=>{let tail='',buffer='';child=spawnImpl(command,args,{cwd:root,windowsHide:true,stdio:['ignore','pipe','pipe'],env:{...runtime.env,...(id==='muscriptor'?{NOTEMENDER_MUSCRIPTOR_VARIANT:mu.variant,NOTEMENDER_MUSCRIPTOR_TERMS:mu.acceptTerms===true?'accepted':'',NOTEMENDER_MUSCRIPTOR_FILE:mu.modelFile||'',NOTEMENDER_HF_TOKEN:mu.token||''}:{}),NOTEMENDER_INSTALL_MANAGED:'1',NOTEMENDER_DOWNLOAD_REGION:region,PYTHONIOENCODING:'utf-8',PYTHONUNBUFFERED:'1',PIP_CACHE_DIR:path.join(root,'runtime','downloads','pip'),TEMP:path.join(root,'runtime','downloads','temp'),TMP:path.join(root,'runtime','downloads','temp')}});
+      const output=chunk=>{buffer+=chunk.toString();const lines=buffer.split(/[\r\n]+/);buffer=lines.pop();for(const line of lines){log(job,line);tail=(tail+'\n'+redactToken(line)).slice(-2000);try{const data=JSON.parse(line);if(data.stage)job.stage=redactToken(data.stage);if(Number.isFinite(data.progress))job.unitProgress=Math.max(0,Math.min(1,data.progress));}catch{}}};child.stdout.on('data',output);child.stderr.on('data',output);
       const abort=()=>terminateProcess(child).catch(()=>{});signal.addEventListener('abort',abort,{once:true});if(signal.aborted)abort();const finish=()=>{signal.removeEventListener('abort',abort);if(buffer)log(job,buffer);};
       child.once('error',error=>{finish();reject(error);});child.once('close',code=>{finish();child=null;signal.aborted?reject(new DOMException('已取消','AbortError')):code===0?resolve():reject(Error(tail.trim()||'组件安装失败，退出码 '+code));});
     });
@@ -172,14 +199,48 @@ export function componentsService(root,{record=()=>{},canStart=()=>true,beforeSt
       }
       if(url.pathname==='/api/components/install'){
         const ids=orderedComponents(body.components);
-        if(ids.includes('muscriptor')){const mu=body.muscriptor;if(!mu||mu.acceptTerms!==true)throw Error('请先阅读并确认 MuScriptor large 的许可条款');if(mu.modelFile&&(typeof mu.modelFile!=='string'||mu.modelFile.length>2048||!path.isAbsolute(mu.modelFile)))throw Error('模型文件路径无效');if(mu.token&&(typeof mu.token!=='string'||mu.token.length>512||!/^hf_[a-zA-Z0-9]+$/.test(mu.token)))throw Error('Hugging Face 只读令牌格式无效');}
+        const mu=body.muscriptor;
+        const spec=ids.includes('muscriptor')?muModel(mu?.variant):null;
+        if(spec){
+          if(mu?.acceptTerms!==true)throw Error('请先阅读并确认 '+spec.name+' 的许可条款');
+          mu.variant=spec.variant;
+          if(typeof mu.modelFile==='string')mu.modelFile=mu.modelFile.trim().replace(/^"(.*)"$/,'$1');
+          if(mu.modelFile&&(typeof mu.modelFile!=='string'||mu.modelFile.length>2048||!path.isAbsolute(mu.modelFile)))throw Error('模型文件路径无效');
+          if(mu.token&&(typeof mu.token!=='string'||mu.token.length>512||!/^hf_[a-zA-Z0-9]+$/.test(mu.token)))throw Error('Hugging Face 只读令牌格式无效');
+        }
+        const whereFor=(id,localOnly=false)=>location(root,id,{localOnly,...(id==='muscriptor'?{variant:spec.variant}:{})});
         const region=['auto','cn','global'].includes(body.region)?body.region:'auto';
         send(202,{job:start('install',async(job,signal)=>{
+          if(spec)job.variant=spec.variant;
+          try{
           let free=Infinity;try{const value=await statfs(root);free=Number(value.bavail)*Number(value.bsize);}catch{}
-          const steps=[];for(const id of ids){const where=await location(root,id),checked=await inspect(root,id,where,{signal});if(checked.ready){log(job,COMPONENTS.find(c=>c.id===id).name+' 已可用，直接复用');continue;}steps.push(id);}
-          const required=steps.reduce((sum,id)=>sum+COMPONENTS.find(c=>c.id===id).space*1024**3,0);if(free<required)throw Error('程序所在磁盘空间不足，请换到空间充足的磁盘');
+          const steps=[];for(const id of ids){const where=await whereFor(id),checked=await inspect(root,id,where,{signal});if(checked.ready){log(job,COMPONENTS.find(c=>c.id===id).name+' 已可用，直接复用');continue;}steps.push(id);}
+          if(spec&&steps.includes('muscriptor')){
+            if(mu.modelFile){
+              const file=await stat(mu.modelFile).catch(()=>null);
+              if(!file?.isFile())throw Error('找不到本机权重文件。请复制完整的 model.safetensors 文件路径');
+              if(file.size!==spec.size)throw Error(spec.name+' 权重大小不匹配。请核对型号或重新下载完整文件');
+            }else if(!mu.token)throw Error('请导入 '+spec.name+' 权重或填写官方下载令牌');
+          }
+          const required=steps.reduce((sum,id)=>sum+(id==='muscriptor'?spec.space:COMPONENTS.find(c=>c.id===id).space)*1024**3,0);if(free<required)throw Error('程序所在磁盘空间不足，请换到空间充足的磁盘');
           await mkdir(path.join(root,'runtime','downloads','temp'),{recursive:true});
-          for(let i=0;i<steps.length;i++){const id=steps[i];signal.throwIfAborted();if((await inspect(root,id,await location(root,id),{signal})).ready)continue;job.stage='安装 '+COMPONENTS.find(c=>c.id===id).name;job.progress=i/steps.length;job.component=id;job.unitProgress=null;await execute(job,id,signal,region,body.muscriptor);signal.throwIfAborted();const checked=await inspect(root,id,await location(root,id,{localOnly:true}),{deep:true,signal});if(!checked.ready)throw Error('安装后检查失败：'+checked.reason);const config=await componentConfig(root);if(config.bindings?.[id]){delete config.bindings[id];await saveComponentConfig(root,config);}job.progress=(i+1)/steps.length;}
+          for(let i=0;i<steps.length;i++){
+            const id=steps[i];signal.throwIfAborted();
+            if((await inspect(root,id,await whereFor(id),{signal})).ready)continue;
+            job.stage='安装 '+(id==='muscriptor'?spec.name:COMPONENTS.find(c=>c.id===id).name);
+            job.progress=i/steps.length;job.component=id;job.unitProgress=null;
+            try{await execute(job,id,signal,region,mu);}finally{if(id==='muscriptor')delete mu.token;}
+            signal.throwIfAborted();
+            const checked=await inspect(root,id,await whereFor(id,true),{deep:true,signal});
+            if(!checked.ready)throw Error('安装后检查失败：'+checked.reason);
+            const config=await componentConfig(root);
+            if(config.bindings?.[id]&&(id!=='muscriptor'||spec.variant==='large')){
+              delete config.bindings[id];await saveComponentConfig(root,config);
+            }
+            job.progress=(i+1)/steps.length;
+          }
+          if(spec)job.result={component:'muscriptor',variant:spec.variant};
+          }finally{if(mu&&typeof mu==='object')delete mu.token;}
         })});return true;
       }
       if(url.pathname==='/api/components/cancel'){if(controller){current.state='cancelling';controller.abort();await terminateProcess(child);}send(200,{ok:true});return true;}

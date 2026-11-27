@@ -23,10 +23,10 @@ export function runProbe(command,args,{cwd,env=process.env,signal,timeout=60000,
     if(signal?.aborted)abort();
   });
 }
-export async function componentLocation(root,id,{localOnly=false}={}){
+export async function componentLocation(root,id,{localOnly=false,variant}={}){
   if(id==='basic')return {directory:await browserModelDirectory(root,{localOnly}),external:Boolean(!localOnly&&await componentBinding(root,'basic'))};
   if(id==='python'||id==='audio-env'){const binding=localOnly?null:await componentBinding(root,id);return {python:binding?.python||await pythonFor(root),external:Boolean(binding)};}
-  if(id==='muscriptor')return muscriptorRuntime(root,{localOnly});
+  if(id==='muscriptor')return muscriptorRuntime(root,{localOnly,variant});
   if(id.startsWith('sound-'))return soundfontLocation(root,id,{localOnly});
   const binding=localOnly?null:await componentBinding(root,id),audio=localOnly?{modelHome:path.join(root,'runtime','models')}:await audioRuntime(root);
   // localOnly selects installation targets, not a different interpreter.

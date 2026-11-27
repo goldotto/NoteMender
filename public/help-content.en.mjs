@@ -56,7 +56,7 @@ computeThreads|Native CPU thread count. Zero lets the runtime decide. Applies to
 refreshCompute|Recheck acceleration components and devices without analysing audio.
 lyricAssist|Optional, off by default. Run Qwen transcription and alignment during generation; this takes extra time. Lyrics can also be recognized later.
 recognitionTraditional|Use Basic Pitch and the existing section strategies. ROSVOT is optional. This is the default and has lower hardware requirements.
-recognitionMu|Use MuScriptor large independently. Start with the original mix or enable optional separation. Audition individual results and turn a track into a score in the candidate preview. Install the component first. Weights are noncommercial.
+recognitionMu|Transcribe with the selected MuScriptor model. MuScriptor automatically separates vocals and instruments with Demucs and splits by vocal activity. If Demucs is unavailable, the selected original-audio range is transcribed as one section. Weights are noncommercial.
 generateMuTrack|Generate MuScriptor alternatives only for the selected section and actual stem. Does not change the working score.
 cancelMuTrack|Cancel additional recognition, retaining candidates and the working score.
 showAllDraftCandidates|Show older rules, raw candidates and comparison backups. Existing data is retained when collapsed.

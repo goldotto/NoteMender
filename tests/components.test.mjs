@@ -139,7 +139,7 @@ test('component refresh recovers after analysis activity ends',async()=>{
 test('component status joins concurrent probes and cached busy polling does not start new probes',async()=>{
   let calls=0,analysing=false;await fixture(async({request})=>{
     const responses=await Promise.all([request('status?refresh=1'),request('status?refresh=1')]);const count=calls;
-    assert.ok(responses.every(r=>r.body.busy===false));assert.equal(count,COMPONENTS.length-1);
+    assert.ok(responses.every(r=>r.body.busy===false));assert.equal(count,COMPONENTS.length+1);
     analysing=true;assert.equal((await request('status')).body.busy,true);assert.equal(calls,count);
     analysing=false;assert.equal((await request('status')).body.busy,false);assert.equal(calls,count);
   },{canStart:()=>!analysing,location:async()=>({external:true}),inspect:async()=>{calls++;await new Promise(r=>setTimeout(r,3));return {ready:true};}});
@@ -204,7 +204,9 @@ async function writeSnapshot(root,snapshot){await mkdir(path.join(root,'runtime'
 test('cold status returns the disk snapshot without probing and flags background refresh',async()=>{
   let calls=0,release;const gate=new Promise(resolve=>{release=resolve;});
   await fixture(async({root,request})=>{
-    await writeSnapshot(root,cachedSnapshot());
+    const saved=cachedSnapshot();
+    Object.assign(saved.components.find(item=>item.id==='muscriptor'),{ready:true,external:true});
+    await writeSnapshot(root,saved);
     const started=Date.now();const {status:code,body}=await request('status');const elapsed=Date.now()-started;
     assert.equal(code,200);assert.equal(calls,0);
     assert.equal(body.stale,true);assert.equal(body.refreshing,true);
@@ -212,7 +214,8 @@ test('cold status returns the disk snapshot without probing and flags background
     assert.deepEqual(body.components.map(item=>item.id),COMPONENTS.map(item=>item.id));
     assert.equal(body.components.find(item=>item.id==='audio').ready,false);
     assert.ok(elapsed<300,`snapshot response took ${elapsed}ms`);
-    release();await warmSettled(request);assert.equal(calls,COMPONENTS.length-1);
+    release();await warmSettled(request);assert.equal(calls,COMPONENTS.length+1);
+    assert.deepEqual(body.components.find(item=>item.id==='muscriptor').variants,{small:{ready:false},medium:{ready:false},large:{ready:true,external:true}});
   },{location:async()=>{await gate;return {external:true};},inspect:async()=>{calls++;return {ready:true};}});
 });
 
@@ -222,11 +225,11 @@ test('background warm replaces the snapshot and later status reads do not probe 
     await writeSnapshot(root,cachedSnapshot());
     const first=await request('status');assert.equal(first.body.refreshing,true);assert.equal(first.body.components.find(item=>item.id==='audio').ready,false);
     const warmed=await warmSettled(request);
-    assert.equal(calls,COMPONENTS.length-1);assert.ok(warmed.components.every(item=>item.ready));assert.equal(warmed.refreshing,false);assert.equal(warmed.stale,undefined);
+    assert.equal(calls,COMPONENTS.length+1);assert.ok(warmed.components.every(item=>item.ready));assert.equal(warmed.refreshing,false);assert.equal(warmed.stale,undefined);
     const before=calls,again=await request('status');
     assert.equal(again.body.refreshing,false);assert.ok(again.body.components.every(item=>item.ready));assert.equal(calls,before);
     const persisted=JSON.parse(await readFile(path.join(root,'runtime','component-cache.json'),'utf8'));
-    assert.equal(persisted.version,1);assert.ok(persisted.components.every(item=>item.ready));assert.ok(persisted.checkedAt>1700000000000);
+    assert.equal(persisted.version,2);assert.ok(persisted.components.every(item=>item.ready));assert.ok(persisted.checkedAt>1700000000000);
   },{location:async()=>({external:true}),inspect:async()=>{calls++;return {ready:true};}});
 });
 
@@ -239,4 +242,23 @@ test('an in-flight background warm does not block a new installation',async()=>{
     assert.equal(install.status,202);assert.ok(install.body.job?.id);
     release();assert.equal((await finished()).state,'done');
   },{location:async()=>{await gate;return {external:true};},inspect:async()=>({ready:true}),spawnImpl:()=>{throw Error('must not install');}});
+});
+
+test('MuScriptor component reports models separately, rejects a wrong weight and reuses legacy Large',async()=>{
+  await fixture(async({root,request,finished})=>{
+    const status=(await request('status?refresh=1')).body.components.find(c=>c.id==='muscriptor');
+    assert.deepEqual(Object.keys(status.variants),['small','medium','large']);
+    assert.equal(status.variants.large.ready,true);assert.equal(status.variants.medium.ready,false);
+    assert.equal((await request('install',{components:['muscriptor'],muscriptor:{variant:'medium'}})).status,400);
+    assert.equal((await request('install',{components:['muscriptor'],muscriptor:{variant:'tiny',acceptTerms:true}})).status,400);
+    await request('install',{components:['muscriptor'],muscriptor:{variant:'large',acceptTerms:true}});
+    assert.deepEqual((await finished()).result,{component:'muscriptor',variant:'large'});
+    const modelFile=path.join(root,'model.safetensors');await writeFile(modelFile,'wrong size');
+    await request('install',{components:['muscriptor'],muscriptor:{variant:'medium',acceptTerms:true,modelFile:'"'+modelFile+'"'}});
+    const failed=await finished();assert.equal(failed.state,'failed');assert.match(failed.error,/Medium 权重大小不匹配/);
+  },{
+    location:async(_root,id,options)=>({external:true,variant:options?.variant}),
+    inspect:async(_root,id,where)=>({ready:id!=='muscriptor'||where.variant==='large'}),
+    spawnImpl:()=>assert.fail('wrong weights and ready legacy weights must not start installation')
+  });
 });

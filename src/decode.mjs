@@ -1,15 +1,18 @@
 import {spawn} from 'node:child_process';
-import {mkdtemp,writeFile,readFile,mkdir,unlink,rmdir} from 'node:fs/promises';
+import {mkdtemp,readFile,mkdir,unlink,rmdir} from 'node:fs/promises';
 import path from 'node:path';
 import {pythonFor} from './python-runtime.mjs';
+import {writeAudioInput} from './audio-io.mjs';
 
-export async function decodeLocal(root,bytes,signal,mode='decode',{spawnImpl=spawn}={}){
+export async function decodeLocal(root,input,signal,mode='decode',{spawnImpl=spawn}={}){
   const runtime=path.join(root,'runtime');await mkdir(runtime,{recursive:true});
   const python=await pythonFor(root);
   const dir=await mkdtemp(path.join(runtime,'decode-'));
   const source=path.join(dir,'input.media'),output=path.join(dir,mode==='tempo'?'tempo.json':'decoded.wav');
   try{
-    await writeFile(source,bytes);
+    const {size}=await writeAudioInput(input,source,{signal,hashInput:false,limit:120*1024*1024,tooLarge:'音频不能超过 120 MB'});
+    if(!size)throw Error('音频为空');
+    signal?.throwIfAborted();
     await new Promise((resolve,reject)=>{
       const child=spawnImpl(python,[path.join(root,'scripts',mode==='tempo'?'measure_tempo.py':'decode_audio.py'),source,output],{windowsHide:true,stdio:'ignore'});
       const abort=()=>child.kill(),timer=setTimeout(abort,90000);signal?.addEventListener('abort',abort,{once:true});if(signal?.aborted)abort();

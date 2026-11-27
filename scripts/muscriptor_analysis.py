@@ -28,12 +28,14 @@ def event_notes(events, duration):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--model', required=True)
+    parser.add_argument('--variant', choices=['small', 'medium', 'large'], default='large')
     parser.add_argument('--input', required=True)
     parser.add_argument('--output', required=True)
     parser.add_argument('--device', choices=['cpu', 'cuda'], default='cpu')
     parser.add_argument('--precision', choices=['fp32', 'fp16', 'bf16'], default='fp32')
     parser.add_argument('--threads', type=int, default=0)
     args = parser.parse_args()
+    model_name = 'MuScriptor ' + args.variant.capitalize()
     started = time.perf_counter()
     import numpy as np
     import torch
@@ -57,9 +59,10 @@ def main():
     with wave.open(args.input, 'rb') as audio:
         if audio.getnchannels() != 1 or audio.getsampwidth() != 2 or audio.getframerate() != 16000:
             raise ValueError('Expected mono PCM16 WAV at 16000Hz')
-        samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype='<i2').astype(np.float32) / 32768
+        samples = np.frombuffer(audio.readframes(audio.getnframes()), dtype='<i2').astype(np.float32)
+        samples /= 32768
     duration = len(samples) / 16000
-    progress('加载 MuScriptor large · ' + args.precision.upper() + ' · ' + args.device, .01)
+    progress('加载 ' + model_name + ' · ' + args.precision.upper() + ' · ' + args.device, .01)
     try:
         # Upstream loads both an empty model AND its checkpoint onto CUDA, which
         # temporarily doubles VRAM. Stage the checkpoint on CPU, then copy into
@@ -98,7 +101,7 @@ def main():
                                           use_sampling=False, cfg_coef=1.0, batch_size=1,
                                           beam_size=1, prelude_forcing=True):
                 if isinstance(event, ProgressEvent):
-                    progress('MuScriptor large 分析 · ' + str(event.completed) + ' / ' + str(event.total),
+                    progress(model_name + ' 分析 · ' + str(event.completed) + ' / ' + str(event.total),
                              .05 + .9 * event.completed / max(1, event.total))
                 else:
                     events.append(event)
@@ -110,14 +113,14 @@ def main():
         output = Path(args.output)
         # No transcribe_to_midi(): that method would run an extra beat detector/model.
         output.with_suffix('.mid').write_bytes(model.events_to_midi_bytes(iter(events), beat_grid=None))
-        result = {'notes': notes, 'duration': duration, 'model': 'MuScriptor large', 'precision': args.precision,
+        result = {'notes': notes, 'duration': duration, 'model': model_name, 'variant': args.variant, 'precision': args.precision,
                   'device': args.device, 'threads': torch.get_num_threads(),
                   'timing': {'loadMs': (loaded-started)*1000, 'inferenceMs': (time.perf_counter()-loaded)*1000},
                   'peakCudaBytes': max(load_peak, torch.cuda.max_memory_allocated()) if args.device == 'cuda' else 0,
                   'loadPeakCudaBytes': load_peak,
                   'inferencePeakCudaBytes': torch.cuda.max_memory_allocated() if args.device == 'cuda' else 0}
         output.write_text(json.dumps(result, ensure_ascii=False), encoding='utf-8')
-        progress('MuScriptor large 完成', 1)
+        progress(model_name + ' 完成', 1)
         return 0
     except (RuntimeError, MemoryError, FloatingPointError) as error:
         text = str(error).lower()

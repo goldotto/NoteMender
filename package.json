@@ -1,6 +1,6 @@
 {
   "name": "notemender",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "type": "module",
   "description": "Local audio-to-numbered-notation studio with passage editing and generic plugin API",

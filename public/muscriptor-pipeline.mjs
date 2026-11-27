@@ -5,8 +5,9 @@ import {guideMuVocalSlots} from './muscriptor-vocal-pitch.mjs';
 
 // Instrument predictions are not audio stems. On a real vocal stem, retain
 // singing even when the model changes its predicted instrument halfway through.
-export const MU_CANDIDATE_MODEL='muscriptor-integrated-0.3.0-large';
-export const isMuCandidate=c=>c?.model===MU_CANDIDATE_MODEL;
+export const MU_CANDIDATE_MODEL='muscriptor-integrated-0.3.0';
+const LEGACY_MU_CANDIDATE_MODEL='muscriptor-integrated-0.3.0-large';
+export const isMuCandidate=c=>c?.model===MU_CANDIDATE_MODEL||c?.model===LEGACY_MU_CANDIDATE_MODEL;
 
 export function muMelodySlots(raw){
   const notes=raw.filter(n=>n.instrument!=='drums'&&Number.isFinite(n.start)&&Number.isFinite(n.end)&&n.end>n.start&&Number.isInteger(n.midi)).map((n,i)=>({...n,eventId:n.id||`mu-${i}`})).sort((a,b)=>a.start-b.start||b.midi-a.midi);

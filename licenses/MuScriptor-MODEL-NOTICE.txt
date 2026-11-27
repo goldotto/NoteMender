@@ -1,7 +1,10 @@
-MuScriptor large model weights
+MuScriptor Small, Medium and Large model weights
 
-Upstream: https://huggingface.co/MuScriptor/muscriptor-large
-Weights revision: 8809fdfbed2affa7ade94a7059e746e3880720e7
+Upstream:
+https://huggingface.co/MuScriptor/muscriptor-small
+https://huggingface.co/MuScriptor/muscriptor-medium
+https://huggingface.co/MuScriptor/muscriptor-large
+Pinned revisions and SHA-256 hashes: public/muscriptor-spec.mjs
 License: Creative Commons Attribution-NonCommercial 4.0 International
 https://creativecommons.org/licenses/by-nc/4.0/
 

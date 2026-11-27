@@ -1,8 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import {createHash} from 'node:crypto';
 import {EventEmitter} from 'node:events';
 import {Readable} from 'node:stream';
-import {mkdtemp,writeFile,readdir,rm} from 'node:fs/promises';
+import {mkdtemp,writeFile,readFile,readdir,rm} from 'node:fs/promises';
 import {tmpdir} from 'node:os';
 import path from 'node:path';
 import {muscriptorService,muWavDuration,validateMuResult} from '../src/muscriptor-service.mjs';
@@ -10,14 +11,28 @@ import {muMelody,muScoreNotes,muscriptorCandidates} from '../public/muscriptor-c
 import {validateProject,makeDemo} from '../public/music.mjs';
 import {wavBytes} from '../public/audio.mjs';
 import {downloadWeights} from '../scripts/install-muscriptor.mjs';
-import {MUSCRIPTOR,muPrecisionPlan,normalizeMuPrecision} from '../public/muscriptor-spec.mjs';
+import {MUSCRIPTOR,MU_MODELS,defaultMuVariant,muPrecisionPlan,normalizeMuPrecision} from '../public/muscriptor-spec.mjs';
 
 const wav=Buffer.from(wavBytes(new Float32Array(16000),16000));
 const base={...makeDemo(),notes:[],lyrics:[],bpm:60,timeAnchors:[{beat:0,second:0},{beat:100,second:100}]};
 const sample={id:'mu-1',start:0,end:.4,midi:60,instrument:'piano'};
-test('MuScriptor keeps explicit large identity and validates WAV instead of trusting headers',()=>{
-  assert.equal(MUSCRIPTOR.variant,'large');assert.equal(MUSCRIPTOR.size,5465642136);assert.equal(muWavDuration(wav),1);
-  const stereo=Buffer.from(wav);stereo.writeUInt16LE(2,22);assert.throws(()=>muWavDuration(stereo));assert.throws(()=>muWavDuration(wav.subarray(0,48)));
+test('MuScriptor validates on-disk WAV, including padded ancillary chunks',async()=>{
+  assert.equal(MUSCRIPTOR.variant,'large');assert.equal(MUSCRIPTOR.size,5465642136);
+  const root=await mkdtemp(path.join(tmpdir(),'muscriptor-wav-')),file=path.join(root,'input.wav');
+  const duration=async input=>{
+    await writeFile(file,input);
+    return muWavDuration(file,input.length,input.subarray(0,12));
+  };
+  try{
+    assert.equal(await duration(wav),1);
+    const junk=Buffer.alloc(10);junk.write('JUNK');junk.writeUInt32LE(1,4);
+    const padded=Buffer.concat([wav.subarray(0,12),junk,wav.subarray(12)]);
+    padded.writeUInt32LE(padded.length-8,4);
+    assert.equal(await duration(padded),1);
+    const stereo=Buffer.from(wav);stereo.writeUInt16LE(2,22);
+    await assert.rejects(duration(stereo),/单声道/);
+    await assert.rejects(duration(wav.subarray(0,48)),/数据不完整/);
+  }finally{await rm(root,{recursive:true,force:true});}
 });
 test('MuScriptor preserves short retriggered notes and separates instrument families',()=>{
   const raw=[sample,{...sample,id:'mu-2',start:.4,end:.43},{...sample,id:'mu-3',start:.43,end:.8,midi:62}];
@@ -113,4 +128,76 @@ test('gated download fails with helpful text and never exposes the token',async(
   const root=await mkdtemp(path.join(tmpdir(),'mu-download-'));const secret='hf_TestOnlyNotReal';let requested;
   try{await assert.rejects(downloadWeights(path.join(root,'weights'),{token:secret,fetchImpl:async(url,options)=>{requested={url,options};return new Response('',{status:403});}}),error=>error.message.includes('large')&&!error.message.includes(secret));assert.ok(requested.url.startsWith('https://huggingface.co/MuScriptor/muscriptor-large/resolve/'));assert.equal(requested.options.headers.Authorization,'Bearer '+secret);}
   finally{await rm(root,{recursive:true,force:true});}
+});
+
+test('MuScriptor selects the architecture, isolates model caches and carries the model into saved candidates',async()=>{
+  const root=await mkdtemp(path.join(tmpdir(),'mu-models-'));
+  const calls=[];let mislabeled=false;
+  const handler=muscriptorService(root,{
+    runtimeFor:async(_,{variant})=>({variant,python:'python',directory:path.join(root,variant),env:{}}),
+    inspect:async(_,{variant})=>({ready:variant!=='small',reason:'尚未配置 '+variant,torchVersion:'test'}),
+    spawnImpl(_command,args){
+      const child=new EventEmitter();child.stdout=new EventEmitter();child.stderr=new EventEmitter();child.kill=()=>{};
+      const option=key=>args[args.indexOf('--'+key)+1],variant=option('variant'),out=option('output');
+      calls.push(variant);
+      assert.equal(option('model'),path.join(root,variant,'model.safetensors'));
+      setImmediate(async()=>{
+        const modelTag=variant==='large'?{}:{variant:mislabeled?'large':variant};
+        await writeFile(out,JSON.stringify({notes:[sample],duration:1,device:'cpu',precision:'fp32',...modelTag}));
+        await writeFile(out.replace('.json','.mid'),'MThd');
+        child.exitCode=0;child.emit('close',0);
+      });
+      return child;
+    }
+  });
+  const route='/api/muscriptor/analyse';
+  try{
+    assert.equal(defaultMuVariant(), 'medium');
+    assert.equal(defaultMuVariant({large:{ready:true},medium:{ready:true}}),'large');
+    assert.equal((await call(handler,route+'?variant=tiny')).status,400);
+    assert.match((await call(handler,route+'?variant=small')).body.error,/small/);
+    assert.deepEqual(calls,[]);
+    const large=await call(handler,route), medium=await call(handler,route+'?variant=medium');
+    assert.equal(large.status,200);assert.equal(medium.status,200);
+    assert.equal(large.body.variant,'large');assert.equal(medium.body.variant,'medium');
+    assert.equal(medium.body.model,MU_MODELS.medium.name);
+    assert.notEqual(large.body.analysisId,medium.body.analysisId);
+    const legacyCache=path.join(root,'runtime','muscriptor','cache',large.body.analysisId+'.json');
+    await writeFile(legacyCache,JSON.stringify({notes:[sample],duration:1,device:'cpu',precision:'fp32',model:'MuScriptor large'}));
+    assert.equal((await call(handler,route)).body.cacheHit,true);
+    assert.equal((await call(handler,route+'?variant=medium')).body.cacheHit,true);
+    assert.deepEqual(calls,['large','medium']);
+    const candidates=muscriptorCandidates(medium.body,base,0,'fixture').variants;
+    assert.ok(candidates.length);
+    assert.equal(validateProject({...base,alternates:candidates}).alternates[0].muVariant,'medium');
+    const different=Buffer.from(wav);different[100]=3;mislabeled=true;
+    const wrong=await call(handler,route+'?variant=medium',{body:different});
+    assert.equal(wrong.status,400);assert.match(wrong.body.error,/实际模型/);
+  }finally{await handler.close();await rm(root,{recursive:true,force:true});}
+});
+
+test('MuScriptor downloads the selected pinned weight, resumes after an interruption and discards bad content',async()=>{
+  const root=await mkdtemp(path.join(tmpdir(),'mu-download-resume-'));
+  const data=Buffer.from('mesh-wgt'),spec={...MU_MODELS.small,size:data.length,sha256:createHash('sha256').update(data).digest('hex')};
+  const target=path.join(root,'weights'),options={spec,token:'hf_MockOnly',onProgress:()=>{}};
+  try{
+    await assert.rejects(downloadWeights(target,{...options,fetchImpl:async(url,{headers})=>{
+      assert.equal(url,MU_MODELS.small.url);assert.equal(headers.Range,undefined);
+      return new Response(data.subarray(0,4));
+    }}),/未完成/);
+    assert.deepEqual(await readFile(target+'.part'),data.subarray(0,4));
+    const controller=new AbortController();controller.abort();
+    await assert.rejects(downloadWeights(target,{...options,signal:controller.signal,fetchImpl:()=>assert.fail('cancelled')}),{name:'AbortError'});
+    await assert.rejects(downloadWeights(target,{...options,fetchImpl:async()=>new Response(data.subarray(4),{status:206,headers:{'Content-Range':'bytes 3-7/8'}})}),/范围不匹配/);
+    assert.deepEqual(await readFile(target+'.part'),data.subarray(0,4));
+    await downloadWeights(target,{...options,fetchImpl:async(_,{headers})=>{
+      assert.equal(headers.Range,'bytes=4-');
+      return new Response(data.subarray(4),{status:206,headers:{'Content-Range':'bytes 4-7/8'}});
+    }});
+    assert.deepEqual(await readFile(target),data);
+    await downloadWeights(target,{...options,fetchImpl:()=>assert.fail('already verified')});
+    await rm(target);
+    await assert.rejects(downloadWeights(target,{...options,fetchImpl:async()=>new Response(Buffer.alloc(8))}),/完整性/);
+    assert.deepEqual(await readdir(root),[]);
+  }finally{await rm(root,{recursive:true,force:true});}
 });

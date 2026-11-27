@@ -1,5 +1,6 @@
 import {tr,onLanguageChange} from './i18n.mjs';
 import {muTrackAnalyses,muTrackWindow,audibleMuTracks,muInstrumentLabel,muInstrumentColor,applyMuRollEdits,muRollEditKey,muInstruments} from './muscriptor-tracks.mjs';
+import {MU_MODELS,muVariantFromModel} from './muscriptor-spec.mjs';
 import {monoSamples} from './audio.mjs';
 import {muDuplicateIds,muMoveNotes,scanMuVocalNotes} from './muscriptor-relabel.mjs';
 
@@ -523,9 +524,13 @@ export function installMuTracks(panel,{context,fetchResult,describeInput,formatT
 
     const inputRow=element('label',tr('识别输入','Analysis input'),'mu-tracks-input');
     const select=element('select');
+    const resultLabel=choice=>{
+      const candidate=choice.candidate,variant=candidate.muVariant??muVariantFromModel(candidate.model)??'large';
+      return describeInput(candidate)+' · '+MU_MODELS[variant].name+' · '+formatTime(choice.origin)+'–'+formatTime(choice.end);
+    };
     for(const [index,choice] of choices.entries()){
-      const suffix=choices.filter(c=>describeInput(c.candidate)===describeInput(choice.candidate)).length>1?' · '+(index+1):'';
-      select.add(new Option(describeInput(choice.candidate)+' · '+formatTime(choice.origin)+'–'+formatTime(choice.end)+suffix,'ready:'+index));
+      const label=resultLabel(choice),suffix=choices.filter(c=>resultLabel(c)===label).length>1?' · '+(index+1):'';
+      select.add(new Option(label+suffix,'ready:'+index));
     }
     for(const [index,item] of inputs.entries()){
       select.add(new Option(describeInput(item)+' · '+lang('待识别','Not analyzed','未解析'),'input:'+index));

@@ -6,7 +6,7 @@ import {adoptCandidate} from './candidate-adoption.mjs';
 import {muscriptorCandidates} from './muscriptor-candidates.mjs';
 import {muPitchWindows} from './muscriptor-vocal-pitch.mjs';
 import {createMuSourceAnalysis,muMelodySlots,muSourceVariants,muWindowResult,distinctMuCandidates,chooseMuCandidates,isMuCandidate} from './muscriptor-pipeline.mjs';
-import {normalizeMuPrecision} from './muscriptor-spec.mjs';
+import {MU_MODEL_IDS,MU_MODELS,MU_MODEL_KEY,defaultMuVariant,muVariantFromModel,normalizeMuPrecision} from './muscriptor-spec.mjs';
 import {installMuReview,makeRepairAlternate} from './muscriptor-review-ui.mjs';
 import {candidateInput,candidateMenuLabel,visibleCandidates} from './candidate-menu.mjs';
 import {installUpdates} from './updates-ui.mjs';
@@ -98,6 +98,8 @@ for(const id of ['linkedEditing','lyricsLinkedEditing','inlineLinkedEditing'])on
 
 const COMPUTE_KEY='jianpu-compute-v1';
 const MU_PRECISION_KEY='notemender-muscriptor-precision-v1';
+let muModelPreference=null;
+try{const saved=localStorage.getItem(MU_MODEL_KEY);if(MU_MODEL_IDS.includes(saved))muModelPreference=saved;}catch{}
 try{$('muPrecision').value=normalizeMuPrecision(localStorage.getItem(MU_PRECISION_KEY));}catch{}
 on('muPrecision','change',()=>{try{localStorage.setItem(MU_PRECISION_KEY,normalizeMuPrecision($('muPrecision').value));}catch{}});
 try{const saved=normalizeCompute(JSON.parse(localStorage.getItem(COMPUTE_KEY)||'{}'));$('computeMode').value=saved.mode;$('computeDevice').value=saved.device;$('computeThreads').value=saved.threads;}catch{}
@@ -573,7 +575,7 @@ on('projectSaveForm','submit',async e=>{e.preventDefault();await confirmProjectS
 on('projectSaveCancel','click',()=>$('projectSaveDialog').close());
 
 function setBusy(value,label=''){
-  $('progressArea').hidden=!value;for(const id of ['alignmentBeat','alignmentSecond','alignAtPlayhead','addAlignment','removeAlignment','sectionKey','setSectionKey','removeSectionKey','autoSeparate','muAutoSeparate','recognitionTraditional','recognitionMu','muPrecision','recognitionProfile','recognitionAblation','audioFile','engine','rangeStart','rangeEnd','minMidi','instrumentMinMidi','instrumentQuantize','maxMidi','strategy','quantize','key','meter','layoutMode','title','offset','transposeBtn','globalPitchStep','globalPitchDown','globalPitchUp','newBtn','demoBtn','openProject','importMidi','separate','addNote','addRest','insertPitch','insertStart','insertDuration','copyNotes','pasteNotes','pasteStart','pasteMode','pasteAtPlayhead','notePitch','noteStart','noteDuration','noteDurationSeconds','durationDown','durationUp','noteLyric','pitchDown','pitchUp','splitNote','splitAt','splitAtPlayhead','splitAtMiddle','mergeNote','deleteNote','markReviewed','barNumber','barAtPlayhead','loadBar','loopBar','barInput','applyBar','freeStart','freeAtPlayhead','freeAtSelection','freeInput','freeApply','expandTimeline','saveSection','sectionAnalysis','deleteSection','regenerateSection'])$(id).disabled=value;
+  $('progressArea').hidden=!value;for(const id of ['alignmentBeat','alignmentSecond','alignAtPlayhead','addAlignment','removeAlignment','sectionKey','setSectionKey','removeSectionKey','autoSeparate','recognitionTraditional','recognitionMu','muModel','muPrecision','recognitionProfile','recognitionAblation','audioFile','engine','rangeStart','rangeEnd','minMidi','instrumentMinMidi','instrumentQuantize','maxMidi','strategy','quantize','key','meter','layoutMode','title','offset','transposeBtn','globalPitchStep','globalPitchDown','globalPitchUp','newBtn','demoBtn','openProject','importMidi','separate','addNote','addRest','insertPitch','insertStart','insertDuration','copyNotes','pasteNotes','pasteStart','pasteMode','pasteAtPlayhead','notePitch','noteStart','noteDuration','noteDurationSeconds','durationDown','durationUp','noteLyric','pitchDown','pitchUp','splitNote','splitAt','splitAtPlayhead','splitAtMiddle','mergeNote','deleteNote','markReviewed','barNumber','barAtPlayhead','loadBar','loopBar','barInput','applyBar','freeStart','freeAtPlayhead','freeAtSelection','freeInput','freeApply','expandTimeline','saveSection','sectionAnalysis','deleteSection','regenerateSection'])$(id).disabled=value;
   if(!value)$('separate').disabled=!original||!window.separationReady;
   $('progressLabel').textContent=appText(label);$('progressBar').style.width='0%';render();
 }
@@ -956,12 +958,12 @@ async function loadMuSource({audio,origin,from,to,source,task,label,recordAudit=
   const samples=await monoSamples(audio,from-origin,to-origin,16000);task.controller.signal.throwIfAborted();
   let poll=null,polling=true;
   const tick=async()=>{try{const response=await fetch('/api/muscriptor/status',{headers:{'X-Studio-Token':token},signal:task.controller.signal});if(response.ok){const state=await response.json();if(state.job)progress(task.workerBase||0,label+' · '+state.job.stage);}}catch{}finally{if(polling&&!task.controller.signal.aborted)poll=setTimeout(tick,900);}};
-  progress(task.workerBase||0,label+' · MuScriptor large');poll=setTimeout(tick,900);
+  progress(task.workerBase||0,label+' · '+MU_MODELS[task.muVariant].name);poll=setTimeout(tick,900);
   let result;const started=performance.now();
-  try{const response=await fetch('/api/muscriptor/analyse?'+computeQuery(task.execution)+'&precision='+task.muPrecision,{method:'POST',headers:{'X-Studio-Token':token},body:wavBytes(samples,16000),signal:task.controller.signal});result=await response.json();if(!response.ok)throw Error(result.error||'MuScriptor 分析失败');}
+  try{const response=await fetch('/api/muscriptor/analyse?'+computeQuery(task.execution)+'&precision='+task.muPrecision+'&variant='+task.muVariant,{method:'POST',headers:{'X-Studio-Token':token},body:wavBytes(samples,16000),signal:task.controller.signal});result=await response.json();if(!response.ok)throw Error(result.error||'MuScriptor 分析失败');}
   finally{polling=false;clearTimeout(poll);}
   task.controller.signal.throwIfAborted();
-  task.muRuns||=[];task.muRuns.push({source,from,to,analysisId:result.analysisId,device:result.device,precision:result.precision,cacheHit:Boolean(result.cacheHit),elapsedMs:performance.now()-started});
+  task.muRuns||=[];task.muRuns.push({source,from,to,variant:result.variant,analysisId:result.analysisId,device:result.device,precision:result.precision,cacheHit:Boolean(result.cacheHit),elapsedMs:performance.now()-started});
   if(result.fallbackReason)analysisWarnings.push('MuScriptor：'+result.fallbackReason);
   if(recordAudit)auditWindows.push({from,to,source,candidateRole:'muscriptor',engine:'muscriptor',cacheHit:Boolean(result.cacheHit),analysisId:result.analysisId,elapsedMs:performance.now()-started,compute:{backend:'muscriptor-'+result.device+'-'+result.precision,records:result.cacheHit?[]:[result.timing||{}]},evidence:{selected:result.notes.filter(n=>n.instrument!=='drums').map(n=>({...n,start:n.start+from,end:n.end+from}))},issues:[]});
   const pitchFrames=source==='vocals'?await prepareMuVocalPitch(result.notes,audio,origin-from,{from:0,to:result.duration},{
@@ -984,27 +986,44 @@ async function muscriptorAlternates(span,sectionId,options,base,step,task,words=
     const loaded=await task.muAnalysis(key,{audio,origin,from,to,source,task,label:trackName(source)}),preparedKey=JSON.stringify([options.minMidi,options.maxMidi,options.strategy]);
     if(!loaded.prepared.has(preparedKey))loaded.prepared.set(preparedKey,muSourceVariants(loaded.result,{...options,pitchFrames:loaded.pitchFrames}));
     const result=muWindowResult(loaded.prepared.get(preparedKey),span,loaded.origin,source);
-    const variants=distinctMuCandidates(result.variants.map(v=>{const candidate=lyricCandidate(v.notes,words,base,step);const id=uid();rawById?.set(id,v.notes);return {id,sectionId,source,method:v.label,model:v.model,inputModel:resource?.model||context?.model||(source==='original'?'original':'htdemucs'),analysisId:loaded.result.analysisId,analysisStart:loaded.origin,analysisEnd:to,resourceId:context?.fingerprint||resource?.id||null,audioStart:span.from,audioEnd:span.to,notes:candidate.notes,lyrics:candidate.lyrics};}));
+    const variants=distinctMuCandidates(result.variants.map(v=>{const candidate=lyricCandidate(v.notes,words,base,step);const id=uid();rawById?.set(id,v.notes);return {id,sectionId,source,method:v.label,model:v.model,muVariant:loaded.result.variant??task.muVariant,inputModel:resource?.model||context?.model||(source==='original'?'original':'htdemucs'),analysisId:loaded.result.analysisId,analysisStart:loaded.origin,analysisEnd:to,resourceId:context?.fingerprint||resource?.id||null,audioStart:span.from,audioEnd:span.to,notes:candidate.notes,lyrics:candidate.lyrics};}));
     if(!variants.some(v=>v.notes.length))analysisWarnings.push(span.name+' · '+trackName(source)+'：MuScriptor 未检测到可用旋律'+unavailable);
     return variants;
   }catch(error){if(task.cancelled||task.controller.signal.aborted||error.name==='AbortError')throw error;analysisWarnings.push(span.name+' · '+trackName(source)+' · MuScriptor：'+error.message+unavailable);return [];}
 }
 
 function selectedRecognitionMode(){return $('recognitionMu').checked?'muscriptor':'traditional';}
-function missingRecognitionComponent(mode){
-  const id=mode==='muscriptor'?'muscriptor':'basic';
-  return componentStatus?.components.find(c=>c.id===id&&!c.checking&&c.ready===false);
+function muModelStates(){return componentStatus?.components?.find(c=>c.id==='muscriptor')?.variants;}
+function selectedMuVariant(){return muModelPreference??defaultMuVariant(muModelStates());}
+function setMuVariant(variant){
+  if(!MU_MODEL_IDS.includes(variant))return;
+  muModelPreference=variant;try{localStorage.setItem(MU_MODEL_KEY,variant);}catch{}
 }
-function requireRecognitionComponent(mode){
-  if(!missingRecognitionComponent(mode))return;
-  throw Error(mode==='muscriptor'?tr('请先在组件管理安装或复用 MuScriptor large。','Install or reuse MuScriptor large in Components first.'):'请先在组件管理安装或复用“基础扒谱模型”；精简版仍可人工编辑、试听与导出。');
+function missingRecognitionComponent(mode,variant=selectedMuVariant()){
+  if(mode==='muscriptor'){const model=muModelStates()?.[variant];return model?.ready===false?model:null;}
+  return componentStatus?.components.find(c=>c.id==='basic'&&!c.checking&&c.ready===false);
+}
+function muSetupMessage(variant){
+  return MU_MODELS[variant].name+' · '+tr('请在组件管理配置此型号。','Set up this model in Components.','コンポーネント管理でこのモデルを設定してください。');
+}
+function requireRecognitionComponent(mode,variant=selectedMuVariant()){
+  if(!missingRecognitionComponent(mode,variant))return;
+  throw Error(mode==='muscriptor'?muSetupMessage(variant):'请先在组件管理安装或复用“基础扒谱模型”；精简版仍可人工编辑、试听与导出。');
 }
 function createRecognitionTask(recognitionMode){
   const mu=recognitionMode==='muscriptor';
   return {recognitionMode,cancelled:false,controller:new AbortController(),stitchDecisions:[],
-    separate:$(mu?'muAutoSeparate':'autoSeparate').checked,singingFine:!mu&&$('singingFine').checked,
-    muPrecision:normalizeMuPrecision($('muPrecision').value),lyricAssist:$('lyricAssist').checked,lyricLanguage:$('lyricsLanguage').value,
+    separate:!mu&&$('autoSeparate').checked,singingFine:!mu&&$('singingFine').checked,
+    muVariant:selectedMuVariant(),muPrecision:normalizeMuPrecision($('muPrecision').value),lyricAssist:$('lyricAssist').checked,lyricLanguage:$('lyricsLanguage').value,
     selectedMu:new Map(),started:performance.now()};
+}
+async function prepareRecognitionSeparation(task){
+  if(task.recognitionMode==='muscriptor'){
+    if(window.separationReady===undefined)await initialSeparationStatus;
+    task.separate=window.separationReady===true;
+  }
+  task.controller.signal.throwIfAborted();
+  if(task.separate)await separateForTask(task);
 }
 function muNoMelody(){
   const message=tr('MuScriptor 没有生成可用旋律。','MuScriptor did not produce a usable melody.');
@@ -1033,9 +1052,9 @@ async function transcribe(){
   if(!mu&&(!Number.isFinite(instrumentOptions.minMidi)||instrumentOptions.minMidi<21||instrumentOptions.minMidi>=instrumentOptions.maxMidi||![.25,.5,1].includes(instrumentStep)))throw Error('请检查器乐旋律音域与节奏设置。');
   const engine=$('engine').value;if(!mu&&!['auto','basic'].includes(engine))throw Error('请选择本机扒谱方式');
   stopPlayback();const task=createRecognitionTask(recognitionMode);job=task;transcribing=true;auditWindows=[];analysisWarnings=[];
-  setBusy(true,mu?'准备 MuScriptor large':'准备本机扒谱');
+  setBusy(true,mu?'准备 '+MU_MODELS[task.muVariant].name:'准备本机扒谱');
   try{
-    await prepareCompute(task);task.muRange={from:start,to:end};await ensureOriginalResource(task);if(task.separate)await separateForTask(task);
+    await prepareCompute(task);task.muRange={from:start,to:end};await ensureOriginalResource(task);await prepareRecognitionSeparation(task);
     const tempoAt=performance.now();const measured=await transcriptionTempo({bpm:project.bpm,analyze:()=>tempoForTask(task),signal:task.controller.signal}),tempoHint=measured.bpm,step=mu?EDIT_STEP:Number($('quantize').value);task.tempoWarning=measured.warning||'';if(task.tempoWarning)analysisWarnings.push(task.tempoWarning);
     task.computeTimes.tempoMs=performance.now()-tempoAt;
     const partial=start>.01||end<original.duration-.01;
@@ -1044,9 +1063,7 @@ async function transcribe(){
     const vocalSamples=useStems&&vocals?await monoSamples(vocals,0,original.duration):null,otherSamples=useStems&&other?await monoSamples(other,0,original.duration):null;
     const spans=automaticSpans(vocalSamples,otherSamples,original.duration,start,end);
     if(mu&&(!vocalSamples||!otherSamples)){
-      analysisWarnings.unshift(task.separate
-        ?tr('缺少可用的人声或器乐分轨，已将所选原曲范围作为一段。','Vocals or instrumental audio was unavailable. The selected original audio is one section.','ボーカルまたは伴奏トラックが利用できないため、選択範囲を1区間として採譜しました。')
-        :tr('未启用分轨与自动分段，已将所选原曲范围作为一段。','Automatic sectioning was off. The selected original audio is one section.','自動区分がオフのため、選択範囲を1区間として採譜しました。'));
+      analysisWarnings.unshift(tr('缺少可用的人声或器乐分轨，已将所选原曲范围作为一段。','Vocals or instrumental audio was unavailable. The selected original audio is one section.','ボーカルまたは伴奏トラックが利用できないため、選択範囲を1区間として採譜しました。'));
     }
     const raw=[],timed=[],alternates=[],sections=[],generatedWords=[];task.completedLyrics=[];
     for(let i=0;i<spans.length;i++){
@@ -1086,12 +1103,12 @@ async function transcribe(){
     showComputeTimes(task);lastAudit=buildAudit(raw,notes,base,{from:start,to:end},sections,task);await persistAudit(task);
     const generatedLyrics=lyricsAfterQuantization(generatedWords,task.quantizationTrace,notes);
     const title=(loadedAudioName||project.sourceName).replace(/\.[^.]+$/,'')||'我的旋律';
-    const profileName=mu?'MuScriptor large':$('recognitionProfile').selectedOptions[0].textContent;
-    localDraft=partial&&!scorePending?validateProject({...replaceSectionCandidate(project,{start:Math.max(0,snap(beatAtTime(project,start),step)),end:snap(beatAtTime(project,end),step)},{notes,lyrics:generatedLyrics}),engine:`原工程 + 本机选段候选 · ${profileName}`}):validateProject({...base,title,sourceName:loadedAudioName||project.sourceName,key:estimateKey(notes),keyChanges:[],sections,alternates,notes,lyrics:[...(base.lyrics||[]).filter(m=>!generatedLyrics.some(t=>t.id===m.id)),...generatedLyrics.filter(t=>!(base.lyrics||[]).some(m=>m.id!==t.id&&m.reviewed&&m.start!==null&&t.start!==null&&Math.min(m.end,t.end)-Math.max(m.start,t.start)>(t.end-t.start)*.5))],aiLog:scorePending?[]:project.aiLog,engine:mu?'MuScriptor large':`本机分段 · ${engine==='auto'?'自动策略':'Basic Pitch'} · ${profileName}`});
+    const profileName=mu?MU_MODELS[task.muVariant].name:$('recognitionProfile').selectedOptions[0].textContent;
+    localDraft=partial&&!scorePending?validateProject({...replaceSectionCandidate(project,{start:Math.max(0,snap(beatAtTime(project,start),step)),end:snap(beatAtTime(project,end),step)},{notes,lyrics:generatedLyrics}),engine:`原工程 + 本机选段候选 · ${profileName}`}):validateProject({...base,title,sourceName:loadedAudioName||project.sourceName,key:estimateKey(notes),keyChanges:[],sections,alternates,notes,lyrics:[...(base.lyrics||[]).filter(m=>!generatedLyrics.some(t=>t.id===m.id)),...generatedLyrics.filter(t=>!(base.lyrics||[]).some(m=>m.id!==t.id&&m.reviewed&&m.start!==null&&t.start!==null&&Math.min(m.end,t.end)-Math.max(m.start,t.start)>(t.end-t.start)*.5))],aiLog:scorePending?[]:project.aiLog,engine:mu?profileName:`本机分段 · ${engine==='auto'?'自动策略':'Basic Pitch'} · ${profileName}`});
     const combined=partial&&!scorePending?integratePartialCandidates(project,sections,alternates,start,end):{sections,alternates};localDraft.sections=combined.sections;
     localDraft.audioResources=audioResources;localDraft.alternates=preservePrimary(localDraft,sections,combined.alternates).map(v=>v.primary&&sections.some(s=>s.id===v.sectionId)?{...v,diagnostics:selectedIssues(null,auditWindows,v.audioStart,v.audioEnd,v.source)}:v);
-    localDraftLabel=mu?'MuScriptor large':'本机整曲候选';draftRecognitionMode=task.recognitionMode;
-    $('localDraftSummary').textContent=appText(`${sections.length} 个段落，自动初稿 ${notes.length} 音，当前谱 ${scorePending?0:project.notes.length} 音，${alternates.length} 组可切换候选。${partial&&!scorePending?'仅替换所选音频范围，其他手改音符保留。':'整曲候选待确认。'}${mu?tr('MuScriptor large · 可逐段打开乐器轨试听和选轨。',' MuScriptor large: listen to and select instrument tracks for each section.'):''}${analysisWarnings.length?' 提示：'+[...new Set(analysisWarnings)].slice(0,6).join('；')+'。':''}${generatedLyrics.length?'歌词 '+generatedLyrics.length+' 字词 · 未对应 '+generatedLyrics.filter(t=>!t.noteIds.length).length+' 项。':''}生成后仍需人工校对。收起此窗口不会丢失候选或覆盖现有乐谱。${task.tempoWarning?' '+task.tempoWarning:''}`);
+    localDraftLabel=mu?profileName:'本机整曲候选';draftRecognitionMode=task.recognitionMode;
+    $('localDraftSummary').textContent=appText(`${sections.length} 个段落，自动初稿 ${notes.length} 音，当前谱 ${scorePending?0:project.notes.length} 音，${alternates.length} 组可切换候选。${partial&&!scorePending?'仅替换所选音频范围，其他手改音符保留。':'整曲候选待确认。'}${mu?' '+profileName+' · '+tr('可逐段打开乐器轨试听和选轨。','Listen to and select instrument tracks for each section.','区間ごとに楽器トラックを試聴して選択できます。'):''}${analysisWarnings.length?' 提示：'+[...new Set(analysisWarnings)].slice(0,6).join('；')+'。':''}${generatedLyrics.length?'歌词 '+generatedLyrics.length+' 字词 · 未对应 '+generatedLyrics.filter(t=>!t.noteIds.length).length+' 项。':''}生成后仍需人工校对。收起此窗口不会丢失候选或覆盖现有乐谱。${task.tempoWarning?' '+task.tempoWarning:''}`);
     $('localDraftSections').textContent=sections.map(s=>{const {start,end}=sectionBeats(base,s),count=notes.filter(n=>n.start>=start&&n.start<end).length,seconds=Math.max(1,s.audioEnd-s.audioStart),modes=[...new Set(s.analysisUsed.map(x=>modeName[x.mode]))].join('／'),tracks=[...new Set(s.analysisUsed.map(x=>trackName(x.source)))].join('／'),flags=previewFlags(s.analysisUsed);return `${s.name}：${count} 音 · ${tracks} · ${modes}${!count?' · 无候选，需人工补写':count/seconds>4?' · 候选偏密，请重点听审':''}`;}).join('　');
     localDraftBase=localDraft;localDraftVariants=localDraft.alternates;selectedDraftVariants=new Map(task.selectedMu);localDraftSections=sections;
     draftComparisonProject=structuredClone(project);draftNewSong=scorePending;draftShouldPersist=true;pendingDraftMeta=null;
@@ -1104,7 +1121,7 @@ function renderDraftSection(section,keepSlice=false,keepPage=keepSlice){
   if(!localDraft||!section)return;
   const variants=localDraftVariants.filter(v=>v.sectionId===section.id),active=selectedDraftVariants.get(section.id)||'primary',activeCandidate=variants.find(v=>v.id===active),activeSource=activeCandidate?.source||section.source;
   const fromMuScriptor=draftRecognitionMode==='muscriptor'||(!draftRecognitionMode&&(
-    localDraftBase?.engine==='MuScriptor large'||localDraftLabel==='MuScriptor large'||
+    muVariantFromModel(localDraftBase?.engine)||muVariantFromModel(localDraftLabel)||
     (['已完成区段候选','已保存的候选'].includes(localDraftLabel)&&(isMuCandidate(activeCandidate)||isMuTrackCandidate(activeCandidate)))
   ));
   $('draftGenericOptions').hidden=fromMuScriptor;
@@ -1191,14 +1208,14 @@ async function generateDraftMuTrack(input){
   const requested=input?.source?input:null;
   if(job||lyricsTask)throw Error('请等待当前分析完成');
   if(!original||!localDraftBase)throw Error('请先加载当前歌曲音频和候选');
-  if(componentStatus?.components.find(c=>c.id==='muscriptor')?.ready===false)throw Error('请先在组件管理安装或复用 MuScriptor large');
+  const muVariant=selectedMuVariant();requireRecognitionComponent('muscriptor',muVariant);
   const base=localDraftBase,section=localDraftSections.find(s=>s.id===$('draftSectionSelect').value),source=requested?.source||$('draftTrackSelect').value;
   if(!section)throw Error('请先选择候选段落');
   const selected=localDraftVariants.find(v=>v.sectionId===section.id&&v.id===selectedDraftVariants.get(section.id));
   const resourceId=requested?requested.resourceId:selected?.resourceId;
   const resource=resourceId?audioResources.find(r=>r.id===resourceId):null;
   if(resourceId&&(!resource||resource.source!==source))throw Error('当前候选的实际音频资源已缺失或不匹配，请先恢复工程音频或重新分轨');
-  const button=$('generateMuTrack'),task={controller:new AbortController(),cancelled:false,muPrecision:normalizeMuPrecision($('muPrecision').value),started:performance.now(),muRange:{from:section.audioStart,to:section.audioEnd}};
+  const button=$('generateMuTrack'),task={controller:new AbortController(),cancelled:false,muVariant,muPrecision:normalizeMuPrecision($('muPrecision').value),started:performance.now(),muRange:{from:section.audioStart,to:section.audioEnd}};
   job=task;button.disabled=true;button.textContent='正在生成 MuScriptor…';$('cancelMuTrack').hidden=false;setBusy(true,'生成当前段落与音轨的 MuScriptor 候选');
   try{
     await prepareCompute(task);
@@ -1262,7 +1279,8 @@ async function retryMuReview(info,point,input,controller){
   const {candidate,section,revision}=info,base=localDraftBase,signal=controller.signal,active=currentDraftVariant(section);
   const stillCurrent=()=>localDraftBase===base&&sourceRevision===revision&&currentDraftSection()?.id===section.id&&currentDraftVariant(section)===active&&localDraftVariants.includes(candidate)&&$('localDraftDialog').open;
   if(!stillCurrent())throw Error('请选择被检查的候选后重试');
-  const task={controller,cancelled:false,muPrecision:normalizeMuPrecision($('muPrecision').value),started:performance.now()};
+  const muVariant=candidate.muVariant??'large';requireRecognitionComponent('muscriptor',muVariant);
+  const task={controller,cancelled:false,muVariant,muPrecision:normalizeMuPrecision($('muPrecision').value),started:performance.now()};
   job=task;
   try{
     setBusy(true,'MuScriptor 局部重识别');
@@ -1292,7 +1310,7 @@ async function retryMuReview(info,point,input,controller){
     if(!replacement.notes.length)throw Error('片段没有生成可用的旋律，原候选保留。');
     const {notes,lyrics}=makeRepairAlternate(base,candidate,point,replacement);
     const id=uid(),variant={id,sectionId:section.id,source:candidate.source,resourceId:candidate.resourceId,inputModel:candidate.inputModel,instrument:candidate.instrument,
-      audioStart:section.audioStart,audioEnd:section.audioEnd,model:'muscriptor-review-retry',method:'MuScriptor 局部重识别 '+diagnosticTime(point.from)+'–'+diagnosticTime(point.to),notes,lyrics};
+      audioStart:section.audioStart,audioEnd:section.audioEnd,model:'muscriptor-review-retry',muVariant,method:'MuScriptor 局部重识别 '+diagnosticTime(point.from)+'–'+diagnosticTime(point.to),notes,lyrics};
     const next=[...localDraftVariants,variant];
     const validatedBase=validateProject({...base,alternates:next}),validatedDraft=validateProject({...localDraft,alternates:next});
     localDraftBase=validatedBase;localDraft=validatedDraft;localDraftVariants=validatedDraft.alternates;
@@ -1326,7 +1344,7 @@ function draftMuTrackContext(){
   const resources=audioResources.filter(r=>r.source!=='original'&&r.audioStart<=range.from+.02&&r.audioEnd>=range.to-.02);
   const inputs=[{source:'original',resourceId:null},...resources.map(r=>({source:r.source,resourceId:r.id,inputModel:r.model}))];
   return {section,active:currentDraftVariant(section),range,variants,source:section.source,revision:sourceRevision,
-    canPlayOriginal:Boolean(original),inputs:original&&componentStatus?.components.find(c=>c.id==='muscriptor')?.ready===true?inputs:[],busy:Boolean(job||lyricsTask||adoptingDraft)};
+    canPlayOriginal:Boolean(original),inputs:original&&muModelStates()?.[selectedMuVariant()]?.ready===true?inputs:[],busy:Boolean(job||lyricsTask||adoptingDraft)};
 }
 async function fetchDraftMuResult(id,signal){
   const timeout=AbortSignal.timeout(15000);
@@ -2050,7 +2068,7 @@ function showSectionDraft(section,candidate,label,{analysisUsed=section.analysis
   const bounds=sectionBeats(project,section),next=replaceSectionCandidate(project,bounds,lyrics?{notes:candidate,lyrics}:candidate);
   if(phrase){const combined=integratePartialCandidates(next,[section],variants,section.audioStart,section.audioEnd);next.sections=combined.sections;next.alternates=combined.alternates;}
   localDraft=validateProject({...next,sections:(next.sections||[]).map(s=>s.id===section.id?{...s,analysisUsed}:s),alternates:[...(next.alternates||[]).filter(a=>a.sectionId!==section.id),...variants],engine:'原工程 + 本机段落候选'});
-  localDraft.audioResources=audioResources;localDraft.alternates=[...(phrase?next.alternates||[]:(project.alternates||[]).map(v=>v.id===`primary-${section.id}`?{...v,id:uid()}:v)).filter(v=>!variants.some(m=>m.id===v.id)),...preservePrimary(localDraft,[section],variants).map(v=>v.primary?{...v,diagnostics:selectedIssues(null,auditWindows,section.audioStart,section.audioEnd,section.source)}:v)];localDraftBase=localDraft;localDraftVariants=localDraft.alternates;selectedDraftVariants=new Map(selectedVariant?[[section.id,selectedVariant]]:[]);localDraftLabel=label;draftRecognitionMode=label==='MuScriptor large'?'muscriptor':'traditional';localDraftSections=[section];draftComparisonProject=structuredClone(project);draftNewSong=false;draftShouldPersist=true;pendingDraftMeta=null;$('draftSectionSelect').replaceChildren(new Option(section.name,section.id));
+  localDraft.audioResources=audioResources;localDraft.alternates=[...(phrase?next.alternates||[]:(project.alternates||[]).map(v=>v.id===`primary-${section.id}`?{...v,id:uid()}:v)).filter(v=>!variants.some(m=>m.id===v.id)),...preservePrimary(localDraft,[section],variants).map(v=>v.primary?{...v,diagnostics:selectedIssues(null,auditWindows,section.audioStart,section.audioEnd,section.source)}:v)];localDraftBase=localDraft;localDraftVariants=localDraft.alternates;selectedDraftVariants=new Map(selectedVariant?[[section.id,selectedVariant]]:[]);localDraftLabel=label;draftRecognitionMode=muVariantFromModel(label)?'muscriptor':'traditional';localDraftSections=[section];draftComparisonProject=structuredClone(project);draftNewSong=false;draftShouldPersist=true;pendingDraftMeta=null;$('draftSectionSelect').replaceChildren(new Option(section.name,section.id));
   const before=project.notes.filter(n=>n.start>=bounds.start&&n.start<bounds.end),after=localDraft.notes.filter(n=>n.start>=bounds.start&&n.start<bounds.end);
   renderDraftSection(section);
   $('localDraftSummary').textContent=appText(`${section.name}：当前 ${before.length} 音 → ${after.length} 音。`);
@@ -2073,9 +2091,9 @@ async function regenerateLocalSection(section){
   const recognitionMode=selectedRecognitionMode(),mu=recognitionMode==='muscriptor';
   requireRecognitionComponent(recognitionMode);
   const task=createRecognitionTask(recognitionMode);job=task;auditWindows=[];analysisWarnings=[];
-  setBusy(true,mu?'MuScriptor large · '+section.name:'本机重识别 '+section.name);
+  setBusy(true,mu?MU_MODELS[task.muVariant].name+' · '+section.name:'本机重识别 '+section.name);
   try{
-    await prepareCompute(task);task.muRange={from,to};await ensureOriginalResource(task);if(task.separate)await separateForTask(task);task.completedLyrics=[];
+    await prepareCompute(task);task.muRange={from,to};await ensureOriginalResource(task);await prepareRecognitionSeparation(task);task.completedLyrics=[];
     const instrumental=section.source==='other'||['intro','interlude','outro'].includes(section.kind),source=mu?(task.separate?(instrumental?'other':'vocals'):'original'):(section.source||'original');
     const options={minMidi:Number(instrumental?$('instrumentMinMidi').value:$('minMidi').value),maxMidi:Number($('maxMidi').value),strategy:$('strategy').value,analysisMode:section.analysisMode||'auto'};
     if(!mu&&(options.minMidi<21||options.maxMidi>108||options.minMidi>=options.maxMidi))throw Error('请检查选段识别音域');
@@ -2086,7 +2104,7 @@ async function regenerateLocalSection(section){
       if(!result.primary)throw muNoMelody();
       const {primary,variants,raw,analysisUsed}=result;
       lastAudit=buildAudit(raw,primary.notes,project,{from,to},[{...section,analysisUsed}],task);await persistAudit(task);
-      showSectionDraft(section,primary.notes,'MuScriptor large',{analysisUsed,variants,lyrics:primary.lyrics,selectedVariant:primary.id});
+      showSectionDraft(section,primary.notes,MU_MODELS[task.muVariant].name,{analysisUsed,variants,lyrics:primary.lyrics,selectedVariant:primary.id});
       return;
     }
     const windows=analysisWindows([{from,to}]),results=[];
@@ -2726,9 +2744,9 @@ await restorePendingCandidate();
 const editorStartupReady=fetch('/api/status').then(r=>r.json()).then(async s=>{token=s.token;refreshDraftMuCacheActions();checkLyricsStatus();await linkedProjectReady;if(!audioUnloaded&&!new URLSearchParams(location.search).get('audio'))await restoreResources(restorableAudioProject(project,localDraft));const singing=await fetch('/api/singing/status',{headers:{'X-Studio-Token':token}});singingReady=(await singing.json()).ready===true;$('singingStatus').textContent=appText(singingReady?'演唱精细分音已就绪':'可选组件尚未安装：scripts/安装候选组件.ps1');if($('computeMode').value==='performance')await refreshCompute();}).catch(()=>toast('本地服务未连接，请通过启动脚本运行。',true));
 
 // Optional native separation API is discovered rather than assumed installed.
-async function checkSeparation(){try{const r=await fetch('/api/separation/status'),s=await r.json();window.separationReady=s.ready===true;window.separationModels=s.models||['htdemucs'];if(!s.ready)for(const id of ['autoSeparate','muAutoSeparate'])$(id).checked=false;$('separationState').textContent=appText(s.ready?'本地 Demucs 已就绪；处理整曲可能需要几分钟。':'分轨未安装，已取消分轨；试用时请手填 BPM。需要分轨可双击“Download-Components.cmd”。');$('separate').disabled=!original||!window.separationReady;}catch{window.separationReady=false;for(const id of ['autoSeparate','muAutoSeparate'])$(id).checked=false;$('separationState').textContent=appText('分轨状态不可用；试用时请手填 BPM。');}}
+async function checkSeparation(){try{const r=await fetch('/api/separation/status'),s=await r.json();window.separationReady=s.ready===true;window.separationModels=s.models||['htdemucs'];if(!s.ready)$('autoSeparate').checked=false;$('separationState').textContent=appText(s.ready?'本地 Demucs 已就绪；处理整曲可能需要几分钟。':'分轨未安装，已取消分轨；试用时请手填 BPM。需要分轨可双击“Download-Components.cmd”。');$('separate').disabled=!original||!window.separationReady;}catch{window.separationReady=false;$('autoSeparate').checked=false;$('separationState').textContent=appText('分轨状态不可用；试用时请手填 BPM。');}}
 on('separate','click',async()=>{if(lyricsTask)throw Error('请等待歌词分析完成');if(!original||job)return;stopPlayback();const task={cancelled:false,controller:new AbortController()};job=task;setBusy(true,'准备分离音频');try{task.started=performance.now();await prepareCompute(task);await separateForTask(task);showComputeTimes(task);if(!task.cancelled)toast('人声与器乐轨已就绪，点击“生成简谱”。');}finally{if(task.cancelled&&task.separationId)api('separation/cancel',{id:task.separationId}).catch(()=>{});if(job===task){job=null;setBusy(false);}}});
-checkSeparation();
+const initialSeparationStatus=checkSeparation();
 
 // A local exported project can be opened directly; never fetch external links.
 async function openLinkedProject(){
@@ -2748,22 +2766,39 @@ function renderRecognitionMode(){
   $('recognitionTraditionalLabel').textContent=tr('传统识谱','Traditional');
   $('recognitionTraditionalHelp').textContent=tr('设备要求较低，适合快速出初稿','Lower hardware requirements for a quick draft');
   $('recognitionMuHelp').textContent=tr('识别多种乐器，计算量较大','Multi-instrument recognition, more demanding');
-  $('muSeparationLabel').textContent=tr('分离人声与器乐并自动分段（额外耗时）','Separate vocals and instruments and detect sections (takes longer)','ボーカルと伴奏を分離して自動で区分（時間がかかります）');
-  $('muSeparationHint').hidden=!mu;
-  $('muSeparationHint').textContent=tr('关闭时，所选原曲范围按一段识别。','With this off, the selected original audio is transcribed as one section.','オフの場合、選択した原曲の範囲を1区間として採譜します。');
-  for(const id of ['traditionalRecognitionParameters','singingOption','singingStatus'])$(id).hidden=mu;
-  $('autoSeparate').closest('label').hidden=mu;
-  for(const id of ['muPrecisionOptions','muSeparationOption'])$(id).hidden=!mu;
-  const missing=missingRecognitionComponent(mode);
+  for(const id of ['traditionalRecognitionParameters','singingOption','singingStatus','transcriptionOptions','separate','separationState'])$(id).hidden=mu;
+  for(const id of ['muModelOptions','muPrecisionOptions'])$(id).hidden=!mu;
+  const variant=selectedMuVariant(),states=muModelStates();
+  $('muModelLabel').textContent=tr('MuScriptor 模型','MuScriptor model','MuScriptor モデル');
+  const modelSelect=$('muModel');
+  for(const option of modelSelect.options){
+    const installed=states?.[option.value]?.ready;
+    option.disabled=installed===false;option.textContent=MU_MODELS[option.value].name+(installed===false?tr(' · 未安装',' · Not installed',' · 未インストール'):'');
+  }
+  modelSelect.value=variant;
+  $('configureMuModel').textContent=tr('配置 MuScriptor','Configure MuScriptor','MuScriptor を設定');
+  const missing=missingRecognitionComponent(mode,variant);
   $('recognitionModeStatus').textContent=missing
-    ?mu?tr('请在组件管理安装或复用 MuScriptor large。','Install or reuse MuScriptor large in Components.')
+    ?mu?muSetupMessage(variant)
       :tr('请在组件管理安装或复用基础扒谱模型。','Install or reuse the basic transcription model in Components.')
-    :mu?tr('默认读取原曲。候选谱可按乐器选听、纠错和转谱。模型权重限非商用。','Uses the original mix by default. Review, correct and score individual instrument tracks in the candidate. Model weights are noncommercial.')
+    :mu?tr('候选谱可按乐器选听、纠错和转谱。模型权重限非商用。','Review, correct and score individual instrument tracks in the candidate. Model weights are noncommercial.')
       :'';
   $('recognitionModeStatus').hidden=!$('recognitionModeStatus').textContent;
 }
 renderRecognitionMode();
-function enforceComponentState(){if(componentStatus)applyComponentAvailability(componentStatus,selectedRecognitionMode());}
+function openMuRecognition(variant){
+  setMuVariant(variant);
+  $('componentsDialog').close();
+  $('recognitionMu').checked=true;$('recognitionMu').dispatchEvent(new Event('change',{bubbles:true}));
+  setDrawer(true);$('muModel').focus();
+}
+on('muModel','change',event=>{setMuVariant(event.target.value);renderRecognitionMode();render();enforceComponentState();});
+const linkedMuSettings=new URL(location.href),linkedMuVariant=linkedMuSettings.searchParams.get('muscriptor');
+if(MU_MODEL_IDS.includes(linkedMuVariant)){
+  linkedMuSettings.searchParams.delete('muscriptor');history.replaceState(history.state,'',linkedMuSettings);
+  queueMicrotask(()=>openMuRecognition(linkedMuVariant));
+}
+function enforceComponentState(){if(componentStatus)applyComponentAvailability(componentStatus,selectedRecognitionMode(),selectedMuVariant());}
 async function componentStateChanged(value){
   componentStatus=value;syncTimbreControls(value);renderRecognitionMode();
   await checkSeparation();await checkLyricsStatus();
@@ -2773,11 +2808,14 @@ async function componentStateChanged(value){
   if($('localDraftDialog').open)muTracks.refresh();
   if($('computeMode').value==='performance'&&!value.busy)await refreshCompute(undefined).catch(()=>{});
 }
-on('componentsTop','click',async()=>{
+async function openComponents(variant){
   $('componentsDialog').showModal();
-  if(!componentManager)componentManager=await createComponentManager($('componentsHost'),{onChanged:componentStateChanged});
+  if(!componentManager)componentManager=await createComponentManager($('componentsHost'),{onChanged:componentStateChanged,onUseMu:openMuRecognition});
   else await componentManager.refresh();
-});
+  if(variant)componentManager.focus('muscriptor',variant);
+}
+on('componentsTop','click',()=>openComponents());
+on('configureMuModel','click',()=>openComponents(selectedMuVariant()));
 // Existing renderers keep managing normal audio/selection conditions. Missing components
 // additionally keep their controls muted even when those renderers update disabled state.
 new MutationObserver(enforceComponentState).observe(document.body,{subtree:true,attributes:true,attributeFilter:['disabled']});

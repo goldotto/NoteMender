@@ -16,7 +16,7 @@ import {preservePrimary,selectedIssues} from '../public/candidate-tools.mjs';
 import {stitchEvidence} from '../public/recognition-evidence.mjs';
 import {computeQuery} from '../public/compute-settings.mjs';
 import {linkRawLyrics} from '../public/lyric-assist.mjs';
-import {normalizeMuPrecision} from '../public/muscriptor-spec.mjs';
+import {MU_MODELS,defaultMuVariant,muVariantFromModel,normalizeMuPrecision} from '../public/muscriptor-spec.mjs';
 import {adoptCandidate} from '../public/candidate-adoption.mjs';
 import {applyComponentAvailability} from '../public/components-ui.mjs';
 import {candidateInput,candidateMenuLabel,visibleCandidates} from '../public/candidate-menu.mjs';
@@ -58,38 +58,42 @@ test('source cache shares concurrent calls and does not repeat failed model load
 });
 
 function convert(events,project,step){const choice=chooseQuantization(events,project,step);return {notes:quantizeNotes(quantizeTimed(events,project,choice.step),60,0,choice.step),step:choice.step,lyrics:[]};}
-async function harness({mode='muscriptor',separate=true,failSource=null}={}){
-  const source=await readFile(new URL('../public/app.mjs',import.meta.url),'utf8'),requests=[],engineCalls=[],checkpoints=[];
+async function harness({mode='muscriptor',separate=true,separationReady=true,failSource=null,variant='large'}={}){
+  const source=await readFile(new URL('../public/app.mjs',import.meta.url),'utf8'),requests=[],engineCalls=[],checkpoints=[],separationCalls=[];
   const controls=new Map(),control=id=>{if(!controls.has(id))controls.set(id,{value:'',checked:false,textContent:'',selectedOptions:[{textContent:'默认基线'}],replaceChildren(){}});return controls.get(id);};
   for(const [id,value] of Object.entries({rangeStart:'0',rangeEnd:'40',minMidi:'21',maxMidi:'108',instrumentMinMidi:'21',instrumentQuantize:'.5',quantize:'.25',strategy:'smooth',engine:'auto',muPrecision:'auto'}))control(id).value=value;
-  control('recognitionMu').checked=mode==='muscriptor';control('muAutoSeparate').checked=separate;control('autoSeparate').checked=separate;control('singingFine').checked=true;
-  const project=base();const state={appText,tr,project,original:{duration:40,kind:'original'},vocals:{duration:40,kind:'vocals'},other:{duration:40,kind:'other'},bass:null,drums:null,instrumental:null,sourceRevision:1,job:null,lyricsTask:null,scorePending:true,pendingDraftMeta:null,componentStatus:{components:[{id:'basic',ready:true},{id:'muscriptor',ready:true}]},token:'fixture-token',performance,AbortController,AbortSignal,DOMException,Map,Set,structuredClone,setTimeout,clearTimeout,Option:class{},
-    $:control,stopPlayback(){},setBusy(){},progress(){},prepareCompute:async task=>{task.execution={mode:'standard',device:'cpu',threads:0};task.computeTimes={};},ensureOriginalResource:async()=>{},separateForTask:async()=>{},
+  control('recognitionMu').checked=mode==='muscriptor';control('autoSeparate').checked=separate;control('singingFine').checked=true;
+  const project=base();const state={appText,tr,project,MU_MODELS,defaultMuVariant,muVariantFromModel,muModelPreference:variant,original:{duration:40,kind:'original'},vocals:{duration:40,kind:'vocals'},other:{duration:40,kind:'other'},bass:null,drums:null,instrumental:null,sourceRevision:1,job:null,lyricsTask:null,scorePending:true,pendingDraftMeta:null,componentStatus:{components:[{id:'basic',ready:true},{id:'muscriptor',ready:true}]},token:'fixture-token',performance,AbortController,AbortSignal,DOMException,Map,Set,structuredClone,setTimeout,clearTimeout,Option:class{},
+    $:control,stopPlayback(){},setBusy(){},progress(){},prepareCompute:async task=>{task.execution={mode:'standard',device:'cpu',threads:0};task.computeTimes={};},ensureOriginalResource:async()=>{},prepareMuVocalPitch:async()=>[],window:{separationReady},separateForTask:async task=>separationCalls.push(task.recognitionMode),
     transcriptionTempo:async()=>({bpm:60,beats:[]}),monoSamples:async(audio,from,to,sampleRate)=>({audio,from,to,sampleRate}),wavBytes:samples=>samples,computeQuery,normalizeMuPrecision,
-    fetch:async(url,request)=>{assert.match(url,/^\/api\/muscriptor\/analyse/);const body=request.body;requests.push(body);assert.equal(body.sampleRate,16000);assert.equal(body.from,0);assert.equal(body.to,40);if(failSource==='all'||body.audio.kind===failSource)return {ok:false,json:async()=>({error:'测试失败'})};return {ok:true,json:async()=>({...sourceResult,analysisId:body.audio.kind==='vocals'?'b'.repeat(64):body.audio.kind==='other'?'c'.repeat(64):'a'.repeat(64)})};},
+    fetch:async(url,request)=>{assert.match(url,/^\/api\/muscriptor\/analyse/);assert.equal(new URL(url,'http://localhost').searchParams.get('variant'),state.muModelPreference);const body=request.body;requests.push(body);assert.equal(body.sampleRate,16000);assert.equal(body.from,0);assert.equal(body.to,40);if(failSource==='all'||body.audio.kind===failSource)return {ok:false,json:async()=>({error:'测试失败'})};return {ok:true,json:async()=>({...sourceResult,variant,analysisId:body.audio.kind==='vocals'?'b'.repeat(64):body.audio.kind==='other'?'c'.repeat(64):'a'.repeat(64)})};},
     createMuSourceAnalysis,muSourceVariants,muWindowResult,distinctMuCandidates,lyricCandidate:(events,words,project,step)=>convert(events,project,step),trackName:s=>s,analysisWarnings:[],auditWindows:[],audioResources:[{id:'d'.repeat(64),source:'original',audioStart:0,audioEnd:40,model:'original'}],automaticSpans:(vocals,other)=>vocals&&other?spans:[{from:0,to:40,name:'原曲',kind:'instrumental',source:'original'}],analysisWindows,uid,makeTimeAnchors,estimateKey,quantizeNotes,quantizeTimed,EDIT_STEP,validateProject,linkRawLyrics,
     generationLyrics:async()=>[],analyseWindow:async(window,source,options,engine)=>{engineCalls.push({source,engine});return {primary:[{id:uid(),start:window.from+.2,end:window.from+.4,midi:60,confidence:.8,source}],variants:[],mode:'solo',source,diagnostics:{issues:[]}};},
     stitchEvidence,selectedIssues,joinWindowNotes:stitchEvidence,candidateNotes:convert,mergeAnalysisUsed,diagnosticFlags:()=>[],instrumentAlternates:async()=>[],singingAlternates:async()=>[],checkpointCandidates:(base,timed,words,sections)=>checkpoints.push(sections.length),showComputeTimes(){},buildAudit:()=>({}),persistAudit:async()=>{},lyricsAfterQuantization:()=>[],preservePrimary,modeName,sectionBeats:()=>({start:0,end:40}),previewFlags:()=>'',loadedAudioName:'合成.wav',renderDraftSection(){},openDraftDialog(){},closeWorker(){}};
   vm.createContext(state);
   vm.runInContext(source.slice(source.indexOf('async function loadMuSource('),source.indexOf('\nfunction renderDraftSection(')),state);
-  return {state,requests,engineCalls,checkpoints,run:()=>state.transcribe(),source,controls};
+  return {state,requests,engineCalls,checkpoints,separationCalls,run:()=>state.transcribe(),source,controls};
 }
 
 test('generation uses only the selected engine; Mu covers every passage and caches each source once',async()=>{
   const traditional=await harness({mode:'traditional'});await traditional.run();
   assert.equal(traditional.requests.length,0);
+  assert.deepEqual(traditional.separationCalls,['traditional']);
   assert.ok(traditional.engineCalls.length>=5);
   assert.ok(traditional.state.localDraft.notes.every(n=>n.midi===60));
 
-  const mu=await harness();
+  const mu=await harness({variant:'medium',separate:false});
   mu.state.componentStatus.components.find(c=>c.id==='basic').ready=false;
   await mu.run();
   assert.equal(mu.engineCalls.length,0);
+  assert.deepEqual(mu.separationCalls,['muscriptor']);
   assert.deepEqual(mu.requests.map(r=>r.audio.kind).sort(),['original','other','vocals']);
   assert.equal(mu.state.project.notes.length,0,'no automatic adoption');
   assert.deepEqual(mu.checkpoints,[1,2,3,4,5]);
   const draft=mu.state.localDraft;
-  assert.equal(draft.engine,'MuScriptor large');
+  assert.equal(draft.engine,'MuScriptor Medium');
+  assert.ok(draft.alternates.filter(isMuCandidate).every(candidate=>candidate.muVariant==='medium'));
+  assert.ok(isMuCandidate({model:'muscriptor-integrated-0.3.0-large'}));
   assert.equal(draft.notes.length,5);
   assert.equal(mu.state.selectedDraftVariants.size,5);
   for(const section of draft.sections){
@@ -103,12 +107,13 @@ test('generation uses only the selected engine; Mu covers every passage and cach
   assert.equal(adopted.project.notes.at(-1).start,35.5,'adoption includes outro outside current preview');
 });
 
-test('Mu direct mode reads only the mix; optional separation failure in a stem uses the Mu mix',async()=>{
-  const direct=await harness({separate:false});
+test('Mu falls back to the mix when Demucs is unavailable or an isolated stem yields no melody',async()=>{
+  const direct=await harness({separationReady:false});
   direct.state.separateForTask=()=>assert.fail('unexpected separation');
   await direct.run();
   assert.deepEqual(direct.requests.map(r=>r.audio.kind),['original']);
   assert.equal(direct.state.localDraft.sections.length,1);
+  assert.match(direct.state.analysisWarnings[0],/缺少可用的人声或器乐分轨/);
 
   const fallback=await harness({failSource:'vocals'});await fallback.run();
   assert.equal(fallback.requests.filter(r=>r.audio.kind==='vocals').length,1);
@@ -116,6 +121,19 @@ test('Mu direct mode reads only the mix; optional separation failure in a stem u
   assert.ok(fallback.state.localDraft.notes.length>0);
   assert.ok(fallback.state.analysisWarnings.some(w=>w.includes('测试失败')));
   assert.equal(fallback.state.localDraft.sections.filter(s=>s.source==='original').length,2);
+});
+
+test('Mu waits for the initial separation status; traditional can still disable separation',async()=>{
+  const mu=await harness({separate:false});
+  mu.state.window.separationReady=undefined;
+  mu.state.initialSeparationStatus=Promise.resolve().then(()=>{mu.state.window.separationReady=true;});
+  await mu.run();
+  assert.deepEqual(mu.separationCalls,['muscriptor']);
+
+  const traditional=await harness({mode:'traditional',separate:false});
+  await traditional.run();
+  assert.deepEqual(traditional.separationCalls,[]);
+  assert.ok(traditional.engineCalls.length);
 });
 
 test('Mu inference failure surfaces its cause and leaves the previous candidate alone',async()=>{
@@ -129,7 +147,7 @@ test('Mu inference failure surfaces its cause and leaves the previous candidate 
 });
 
 test('segment regeneration also uses the selected engine and retains the selected Mu analysis',async()=>{
-  const h=await harness({separate:false}),s=h.state;
+  const h=await harness({separationReady:false}),s=h.state;
   const segment={id:'selection',name:'当前段',audioStart:25,audioEnd:35,source:'vocals'};
   s.sectionSeconds=()=>({from:25,to:35});
   let draft;
@@ -137,9 +155,10 @@ test('segment regeneration also uses the selected engine and retains the selecte
   const start=h.source.indexOf('async function regenerateLocalSection(');
   const end=h.source.indexOf("on('sectionList'",start);
   vm.runInContext(h.source.slice(start,end),s);
+  const sources=[];
   s.fetch=async(url,{body})=>{
     assert.ok(url.startsWith('/api/muscriptor/analyse'));
-    assert.equal(body.audio.kind,'original');assert.equal(body.from,25);assert.equal(body.to,35);
+    sources.push(body.audio.kind);assert.equal(body.from,25);assert.equal(body.to,35);
     return {ok:true,json:async()=>({...sourceResult,notes:[event('ref',.5,1,74)]})};
   };
   await s.regenerateLocalSection(segment);
@@ -147,6 +166,14 @@ test('segment regeneration also uses the selected engine and retains the selecte
   assert.equal(draft[1][0].start,25.5);
   assert.equal(draft[3].selectedVariant,draft[3].variants[0].id);
   assert.equal(draft[3].analysisUsed[0].mode,'muscriptor');
+  assert.deepEqual(sources,['original']);
+  assert.deepEqual(h.separationCalls,[]);
+
+  s.window.separationReady=true;
+  await s.regenerateLocalSection(segment);
+  assert.deepEqual(h.separationCalls,['muscriptor']);
+  assert.deepEqual(sources,['original','vocals','original']);
+  assert.equal(draft[3].analysisUsed[0].source,'vocals');
 });
 
 test('Mu request abort propagates and clears the active task',async()=>{

@@ -85,7 +85,7 @@
 .recognition-mode-options strong,.recognition-mode-options small{display:block}
 .recognition-mode-options small{margin-top:3px;color:#567160;line-height:1.35}
 
-#singingOption[hidden],#muSeparationOption[hidden],#transcriptionOptions .checkbox[hidden]{display:none}
+#singingOption[hidden]{display:none}
 
 .lyric-romaji{max-height:14rem;overflow:auto;padding:0 .65rem}
 .lyric-romaji p{margin:.55rem 0;overflow-wrap:anywhere}

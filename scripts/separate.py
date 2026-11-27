@@ -68,25 +68,37 @@ def separate(source, destination, other_destination):
             sf.write(Path(other_destination).parent / (name + '.wav'), audio[:, 0] * 0, sr)
         (Path(other_destination).parent / 'stems.json').write_text(json.dumps({'version':3,'model':MODEL,'sources':list(model.sources)+['instrumental']}), encoding='utf-8')
         return
+    del audio, ref
+    wave.sub_(mean).div_(std)
     print("正在分离人声（" + device.upper() + "）…", flush=True)
+    retry_on_cpu = False
     with torch.inference_mode():
         try:
-            result = apply_model(model, ((wave - mean) / std)[None], device=device, shifts=0, split=True, overlap=0.1, progress=True, num_workers=0)[0].cpu()
+            result = apply_model(model, wave[None], device=device, shifts=0, split=True, overlap=0.1, progress=True, num_workers=0)[0].cpu()
         except Exception as error:
             if device != 'cuda':
                 raise
             fallbacks.append(str(error)[:300])
+            retry_on_cpu = True
+        if retry_on_cpu:
             model.cpu()
             torch.cuda.empty_cache()
             device = 'cpu'
             print('显卡分轨失败，重试当前分轨任务（CPU）…', flush=True)
-            result = apply_model(model, ((wave - mean) / std)[None], device=device, shifts=0, split=True, overlap=0.1, progress=True, num_workers=0)[0]
+            result = apply_model(model, wave[None], device=device, shifts=0, split=True, overlap=0.1, progress=True, num_workers=0)[0]
+        # Reuse the inference output for denormalized stems.
+        result.mul_(std).add_(mean)
+    del wave
     stem_dir = Path(other_destination).parent
-    stems = {name: result[model.sources.index(name)] * std + mean for name in model.sources}
-    for name, audio in stems.items():
+    instrumental = None
+    for name, audio in zip(model.sources, result):
         target = destination if name == 'vocals' else other_destination if name == 'other' else stem_dir / (name + '.wav')
         sf.write(target, audio.T.numpy(), model.samplerate, subtype="PCM_16")
-    instrumental = sum(stems[name] for name in stems if name not in ['vocals', 'drums'])
+        if name not in ['vocals', 'drums']:
+            if instrumental is None:
+                instrumental = 0 + audio
+            else:
+                instrumental.add_(audio)
     sf.write(stem_dir / 'instrumental.wav', instrumental.T.numpy(), model.samplerate, subtype="PCM_16")
     (stem_dir / 'stems.json').write_text(json.dumps({'version':3,'model':MODEL,'sources':list(model.sources)+['instrumental']}), encoding='utf-8')
     metadata = {'device': device, 'threads': torch.get_num_threads(), 'precision': 'fp32', 'model': MODEL, 'torchVersion': torch.__version__, 'fallbacks': fallbacks, 'elapsedMs': (time.perf_counter()-started)*1000, 'peakGPUAllocatedBytes':torch.cuda.max_memory_allocated() if device=='cuda' else None}

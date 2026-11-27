@@ -111,9 +111,9 @@ application license does not relicense them.
 The optional piano, nylon guitar, violin and flute samples come from gleitz/midi-js-soundfonts (FluidR3_GM), pinned at 044fab8e1456bfafc5776e86dfd6bb8697149aef. Its README identifies the soundfont license as CC BY 3.0. See FluidR3-SAMPLES-NOTICE.txt for authorship, source and license links. These samples retain their own license.
 
 
-## MuScriptor large（可选）
+## MuScriptor（可选）
 
-新增 large 0.3.0 多乐器转谱组件，默认不启用。保留原始多轨 MIDI，并生成供选择的单旋律候选。代码 MIT，权重 CC BY-NC 4.0 及附加条款，需单独授权，不含在基础包内。安装与验证边界见 [MuScriptor组件](../docs/MuScriptor组件.md)。
+MuScriptor 0.3.0 多乐器转谱支持 Small、Medium、Large，默认不安装。保留原始多轨 MIDI，并生成供选择的单旋律候选。代码 MIT，权重 CC BY-NC 4.0 及附加条款，需单独授权，不含在基础包内。安装与验证边界见 [MuScriptor组件](../docs/MuScriptor组件.md)。
 
 ## Japanese lyric reading
 
