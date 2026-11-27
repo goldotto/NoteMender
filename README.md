@@ -2,7 +2,9 @@
 
 NoteMender 是本机运行的音频转谱与校对工具。从原曲生成旋律候选，边听边改音符与歌词，再把工作区谱子交给内置改谱台修订和输出。
 
-[下载 2.5.0 正式版](https://github.com/goldotto/NoteMender/releases/tag/v2.5.0) · [更新说明](RELEASE_NOTES.md) · [使用说明](说明书.txt) · [报告问题](https://github.com/goldotto/NoteMender/issues)
+> 2.5.0 安装包和在线更新暂时撤回，等待 MuScriptor 模型选项完善。
+
+[查看可下载版本](https://github.com/goldotto/NoteMender/releases) · [更新说明](RELEASE_NOTES.md) · [使用说明](说明书.txt) · [报告问题](https://github.com/goldotto/NoteMender/issues)
 
 ## 从听谱到成品
 
@@ -22,11 +24,11 @@ NoteMender 是本机运行的音频转谱与校对工具。从原曲生成旋律
 | 基础版（推荐，base） | 精简版全部内容、Python、CPU 音频环境、扒谱及四／六轨分轨模型 | 扒谱、分轨、编辑、试听与导出 |
 | 精简版（lite） | 程序、Node.js、内置说明与小型采样音色 | 编辑、试听、MIDI 和歌词导入与谱子导出 |
 
-从 [GitHub 发行页](https://github.com/goldotto/NoteMender/releases/tag/v2.5.0) 下载对应的完整 Setup.exe，并对照 SHA256SUMS。选装 Qwen 歌词、NVIDIA 加速、ROSVOT 和 MuScriptor 可以在安装后通过「组件管理」添加。MuScriptor 权重需取得官方授权。安装包未使用 Windows 发布者证书。
+从 [GitHub 发行页](https://github.com/goldotto/NoteMender/releases) 下载对应的完整 Setup.exe，并对照 SHA256SUMS。选装 Qwen 歌词、NVIDIA 加速、ROSVOT 和 MuScriptor 可以在安装后通过「组件管理」添加。MuScriptor 权重需取得官方授权。安装包未使用 Windows 发布者证书。
 
 已有具备签名安装凭据的版本可通过「版本与更新」从 GitHub 下载小型程序更新，保留模型、组件及工作数据。旧版如果只看到国内索引，请将来源切到 GitHub 后重新检查。无法在线升级时，先保存工程和原音，再安装到新目录，从组件管理复用已有环境。见[安装与迁移](docs/安装与迁移.md)。
 
-[CNB 镜像仓库](https://cnb.cool/goldotto/NoteMender)和 [Gitee 镜像仓库](https://gitee.com/goldotto/note-mender)上的版本以各自发行页为准。2.5.0 的安装包和签名更新由 GitHub 提供。
+[CNB 镜像仓库](https://cnb.cool/goldotto/NoteMender)和 [Gitee 镜像仓库](https://gitee.com/goldotto/note-mender)上的版本以各自发行页为准。
 
 ## 从源码运行
 
